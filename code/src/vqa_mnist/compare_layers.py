@@ -23,6 +23,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("linear", "probs_only"),
         default="linear",
     )
+    parser.add_argument(
+        "--num-classes",
+        choices=(4, 10),
+        type=int,
+        default=10,
+    )
     parser.add_argument("--epochs", type=int, default=8)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--learning-rate", type=float, default=0.05)
@@ -65,6 +71,7 @@ def main() -> None:
             TrainingConfig(
                 ansatz=args.ansatz,
                 readout_mode=args.readout_mode,
+                num_classes=args.num_classes,
                 epochs=args.epochs,
                 batch_size=args.batch_size,
                 learning_rate=args.learning_rate,
@@ -81,6 +88,7 @@ def main() -> None:
             {
                 "ansatz": args.ansatz,
                 "readout_mode": args.readout_mode,
+                "num_classes": args.num_classes,
                 "layers": layer_count,
                 "test_loss": results["test_metrics"]["loss"],
                 "test_accuracy": results["test_metrics"]["accuracy"],

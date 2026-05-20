@@ -47,6 +47,7 @@ Useful options:
 
 - `--ansatz`: `basic`, `hardware_efficient`, or `strongly_entangling`
 - `--readout-mode`: `linear` or `probs_only`
+- `--num-classes`: `10` or `4`
 - `--epochs`: training epochs
 - `--train-limit`: optionally cap the training set for faster experiments
 - `--val-limit`: optionally cap the validation set
@@ -68,6 +69,15 @@ train-vqa-mnist --ansatz strongly_entangling --readout-mode probs_only
 ```
 
 In `probs_only` mode, the circuit still returns the full 64-dimensional probability vector. The classifier then groups basis-state probabilities into 10 class probabilities using `basis_index mod 10`, and trains directly on those class probabilities without a learnable linear readout layer.
+
+If you want to train on 4 classes only:
+
+```bash
+cd /Users/hoangquan/Workspaces/QuantumDistillation/code
+train-vqa-mnist --num-classes 4
+```
+
+This filters the dataset to digits `0`, `1`, `2`, and `3`, and changes the classifier output from 10 classes to 4 classes.
 
 ## Run with CUDA
 
@@ -161,7 +171,7 @@ These logits are passed directly to cross-entropy loss during training. In other
 
 This design keeps the quantum circuit focused on feature transformation while the classical readout performs the final 10-class decision. It is a simple hybrid architecture that makes ansatz comparisons easier and more stable.
 
-An alternative is `--readout-mode probs_only`, which removes the trainable classical head and uses only `qml.probs` to produce class probabilities.
+An alternative is `--readout-mode probs_only`, which removes the trainable classical head and uses only `qml.probs` to produce class probabilities. In that mode, the basis-state probabilities are grouped into either 10 or 4 class probabilities depending on `--num-classes`.
 
 ## Compare several VQAs
 

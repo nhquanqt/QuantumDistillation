@@ -23,6 +23,7 @@ from model import (
 class TrainingConfig:
     ansatz: str = "strongly_entangling"
     readout_mode: str = "linear"
+    num_classes: int = 10
     epochs: int = 10
     batch_size: int = 16
     learning_rate: float = 0.05
@@ -67,12 +68,17 @@ def train_model(config: TrainingConfig) -> dict:
     torch.manual_seed(config.seed)
     classical_device = resolve_device(config.device)
     splits = load_mnist8x8_splits(
+        num_classes=config.num_classes,
         seed=config.seed,
         train_limit=config.train_limit,
         val_limit=config.val_limit,
         test_limit=config.test_limit,
     )
-    spec = ModelSpec(ansatz=config.ansatz, num_layers=config.layers)
+    spec = ModelSpec(
+        ansatz=config.ansatz,
+        num_layers=config.layers,
+        num_classes=config.num_classes,
+    )
     model = VQADigitsClassifier(
         spec,
         seed=config.seed,
@@ -94,7 +100,7 @@ def train_model(config: TrainingConfig) -> dict:
 
     print(
         f"quantum_device={config.quantum_device} classical_device={classical_device.type}"
-        f" readout_mode={config.readout_mode}"
+        f" readout_mode={config.readout_mode} num_classes={config.num_classes}"
     )
 
     for epoch in range(1, config.epochs + 1):
@@ -189,6 +195,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("linear", "probs_only"),
         default="linear",
     )
+    parser.add_argument(
+        "--num-classes",
+        choices=(4, 10),
+        type=int,
+        default=10,
+    )
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--learning-rate", type=float, default=0.05)
@@ -221,6 +233,7 @@ def main() -> None:
     config = TrainingConfig(
         ansatz=args.ansatz,
         readout_mode=args.readout_mode,
+        num_classes=args.num_classes,
         epochs=args.epochs,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,

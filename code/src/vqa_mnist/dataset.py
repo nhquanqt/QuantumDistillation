@@ -31,6 +31,7 @@ def _one_hot(labels: np.ndarray, num_classes: int = 10) -> np.ndarray:
 
 def load_mnist8x8_splits(
     *,
+    num_classes: int = 10,
     test_size: float = 0.2,
     val_size: float = 0.1,
     seed: int = 123,
@@ -44,10 +45,18 @@ def load_mnist8x8_splits(
     so they can be embedded directly with amplitude embedding on 6 qubits.
     """
 
+    if num_classes not in (4, 10):
+        raise ValueError(f"Unsupported num_classes: {num_classes}")
+
     digits = load_digits()
     features = digits.images.reshape((-1, 64)).astype(np.float64) / 16.0
     features = _normalize_rows(features)
     labels = digits.target.astype(np.int64)
+
+    if num_classes == 4:
+        mask = labels < 4
+        features = features[mask]
+        labels = labels[mask]
 
     train_x, test_x, train_y_raw, test_y_raw = train_test_split(
         features,
@@ -77,9 +86,9 @@ def load_mnist8x8_splits(
 
     return DigitsSplits(
         train_x=train_x,
-        train_y=_one_hot(train_y_raw),
+        train_y=_one_hot(train_y_raw, num_classes=num_classes),
         val_x=val_x,
-        val_y=_one_hot(val_y_raw),
+        val_y=_one_hot(val_y_raw, num_classes=num_classes),
         test_x=test_x,
-        test_y=_one_hot(test_y_raw),
+        test_y=_one_hot(test_y_raw, num_classes=num_classes),
     )
