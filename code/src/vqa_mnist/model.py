@@ -21,6 +21,14 @@ class ModelSpec:
     num_classes: int = 10
 
 
+def resolve_quantum_device_name(quantum_device: str) -> str:
+    if quantum_device == "cpu":
+        return "default.qubit"
+    if quantum_device == "cuda":
+        return "lightning.gpu"
+    raise ValueError(f"Unsupported quantum device: {quantum_device}")
+
+
 def parameter_shape(spec: ModelSpec) -> tuple[int, ...]:
     if spec.ansatz == "strongly_entangling":
         return qml.StronglyEntanglingLayers.shape(
@@ -34,8 +42,17 @@ def parameter_shape(spec: ModelSpec) -> tuple[int, ...]:
     raise ValueError(f"Unsupported ansatz: {spec.ansatz}")
 
 
-def build_qnode(spec: ModelSpec):
-    dev = qml.device("default.qubit", wires=spec.num_qubits)
+def build_qnode(spec: ModelSpec, quantum_device: str = "cpu"):
+    device_name = resolve_quantum_device_name(quantum_device)
+    try:
+        dev = qml.device(device_name, wires=spec.num_qubits)
+    except Exception as exc:
+        if quantum_device == "cuda":
+            raise ValueError(
+                "quantum_device='cuda' requires PennyLane's lightning.gpu backend. "
+                "Install the GPU simulator support and ensure CUDA/cuQuantum are available."
+            ) from exc
+        raise
     wires = list(range(spec.num_qubits))
 
     @qml.qnode(dev, interface="torch")
@@ -73,10 +90,12 @@ class VQADigitsClassifier(torch.nn.Module):
         spec: ModelSpec,
         seed: int = 123,
         classical_device: torch.device | None = None,
+        quantum_device: str = "cpu",
     ) -> None:
         super().__init__()
         self.spec = spec
-        self.qnode = build_qnode(spec)
+        self.quantum_device = quantum_device
+        self.qnode = build_qnode(spec, quantum_device=quantum_device)
         self.classical_device = classical_device or torch.device("cpu")
 
         generator = torch.Generator()

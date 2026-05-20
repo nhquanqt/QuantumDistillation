@@ -30,6 +30,7 @@ class TrainingConfig:
     val_limit: int | None = None
     test_limit: int | None = None
     device: str = "auto"
+    quantum_device: str = "cpu"
 
 
 def _as_torch_features(array: np.ndarray) -> torch.Tensor:
@@ -74,6 +75,7 @@ def train_model(config: TrainingConfig) -> dict:
         spec,
         seed=config.seed,
         classical_device=classical_device,
+        quantum_device=config.quantum_device,
     )
     train_x = _as_torch_features(splits.train_x)
     train_y = _as_torch_labels(splits.train_y).to(classical_device)
@@ -88,7 +90,7 @@ def train_model(config: TrainingConfig) -> dict:
     history: list[dict[str, float]] = []
 
     print(
-        f"quantum_device=cpu classical_device={classical_device.type}"
+        f"quantum_device={config.quantum_device} classical_device={classical_device.type}"
     )
 
     for epoch in range(1, config.epochs + 1):
@@ -180,6 +182,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
     )
     parser.add_argument(
+        "--quantum-device",
+        choices=("cpu", "cuda"),
+        default="cpu",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("outputs"),
@@ -201,6 +208,7 @@ def main() -> None:
         val_limit=args.val_limit,
         test_limit=args.test_limit,
         device=args.device,
+        quantum_device=args.quantum_device,
     )
     results = train_model(config)
     output_path = save_run(results, args.output_dir)

@@ -52,30 +52,32 @@ Useful options:
 - `--layers`: number of variational layers
 - `--learning-rate`: Adam step size
 - `--device`: `auto`, `cpu`, `cuda`, or `mps`
+- `--quantum-device`: `cpu` or `cuda`
 
 By default, the project trains, validates, and tests on the full dataset splits.
 
 ## Run with CUDA
 
-If your PyTorch install has CUDA support, you can request GPU execution for the Torch readout and loss path with:
+If your environment supports it, you can enable CUDA for both the PennyLane quantum simulator and the PyTorch readout path:
 
 ```bash
 cd /Users/hoangquan/Workspaces/QuantumDistillation/code
-train-vqa-mnist --ansatz strongly_entangling --epochs 12 --device cuda
+train-vqa-mnist --ansatz strongly_entangling --epochs 12 --quantum-device cuda --device cuda
 ```
 
 You can also compare all ansatzes with:
 
 ```bash
 cd /Users/hoangquan/Workspaces/QuantumDistillation/code
-compare-vqa-mnist --epochs 8 --device cuda
+compare-vqa-mnist --epochs 8 --quantum-device cuda --device cuda
 ```
 
-Current limitation:
+Device meaning:
 
-- The PennyLane circuit in this project uses `default.qubit`, so the quantum simulation itself still runs on CPU.
-- `--device cuda` accelerates the PyTorch readout layer and loss computation, not the underlying quantum simulator.
-- If CUDA is requested but unavailable, the script raises a clear error.
+- `--quantum-device cuda` selects PennyLane's `lightning.gpu` simulator backend.
+- `--device cuda` places the PyTorch readout layer and loss computation on CUDA.
+- `--quantum-device cpu` keeps the quantum simulator on `default.qubit`.
+- If the CUDA-backed PennyLane simulator is unavailable, the script raises a clear error.
 
 ## Ansatz design
 

@@ -27,6 +27,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
     )
     parser.add_argument(
+        "--quantum-device",
+        choices=("cpu", "cuda"),
+        default="cpu",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("outputs"),
@@ -52,6 +57,7 @@ def main() -> None:
                 val_limit=args.val_limit,
                 test_limit=args.test_limit,
                 device=args.device,
+                quantum_device=args.quantum_device,
             )
         )
         summaries.append(
