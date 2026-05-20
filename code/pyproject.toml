@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vqa-mnist"
+version = "0.1.0"
+description = "Train PennyLane VQAs on 8x8 handwritten digits."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pennylane>=0.36",
+    "scikit-learn>=1.3",
+    "torch>=2.1",
+]
+
+[project.scripts]
+train-vqa-mnist = "vqa_mnist.train:main"
+compare-vqa-mnist = "vqa_mnist.compare:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

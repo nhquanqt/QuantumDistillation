@@ -338,6 +338,363 @@ So the student may appear to distill successfully on a narrow training distribut
 
 This distinction matters because apparent empirical success on small datasets does not necessarily imply true transfer of quantum knowledge. The student may only be fitting a narrow slice of the teacher's behavior without capturing the mechanism that produced it.
 
+## Mismatch Margin Computation
+
+A useful quantitative way to formalize expressivity mismatch is through a mismatch margin. This is the smallest achievable discrepancy between the trained teacher and the best realizable student within the student's ansatz family.
+
+Let the mismatch margin over a distribution $\mathcal{D}$ be
+
+$$
+\gamma(\mathcal{D})
+:=
+\inf_{\theta_S}
+\mathbb{E}_{x\sim\mathcal{D}}
+\left[
+\ell\!\left(f_S(x;\theta_S),f_T(x;\theta_T^\star)\right)
+\right].
+$$
+
+This quantity measures irreducible teacher-student mismatch after optimizing over all student parameters. If $\gamma(\mathcal{D})=0$, then the student family can in principle match the teacher on the distribution of interest. If $\gamma(\mathcal{D})>0$, then there is a nonzero approximation floor induced by the student architecture.
+
+### 1. Expectation-value mismatch margin
+
+If teacher and student both output scalar expectation values, then a natural definition is
+
+$$
+\gamma_{\mathrm{exp}}(\mathcal{D})
+=
+\inf_{\theta_S}
+\mathbb{E}_{x\sim\mathcal{D}}
+\left[
+|f_S(x;\theta_S)-f_T(x;\theta_T^\star)|^2
+\right].
+$$
+
+This is often the simplest choice in VQAs with a single measured observable.
+
+### 2. Vector-output mismatch margin
+
+If the models output vectors of observables,
+
+$$
+\mathbf{f}_T(x),\mathbf{f}_S(x)\in\mathbb{R}^m,
+$$
+
+then the mismatch margin can be defined as
+
+$$
+\gamma_{\mathrm{vec}}(\mathcal{D})
+=
+\inf_{\theta_S}
+\mathbb{E}_{x\sim\mathcal{D}}
+\left[
+\|\mathbf{f}_S(x;\theta_S)-\mathbf{f}_T(x;\theta_T^\star)\|_2^2
+\right].
+$$
+
+This is useful when the teacher exposes several expectation values or logits simultaneously.
+
+### 3. Output-distribution mismatch margin
+
+If the teacher and student output bitstring distributions $p_T(z|x)$ and $p_S(z|x;\theta_S)$, then one can define a distribution-level mismatch margin such as
+
+$$
+\gamma_{\mathrm{KL}}(\mathcal{D})
+=
+\inf_{\theta_S}
+\mathbb{E}_{x\sim\mathcal{D}}
+\left[
+D_{\mathrm{KL}}\!\left(p_T(\cdot|x)\,\|\,p_S(\cdot|x;\theta_S)\right)
+\right].
+$$
+
+Other choices are also possible, for example total variation distance,
+
+$$
+\gamma_{\mathrm{TV}}(\mathcal{D})
+=
+\inf_{\theta_S}
+\mathbb{E}_{x\sim\mathcal{D}}
+\left[
+\frac{1}{2}\sum_z |p_T(z|x)-p_S(z|x;\theta_S)|
+\right].
+$$
+
+These definitions are more informative when output probabilities themselves are important, not just low-dimensional expectation values.
+
+### 4. State-level mismatch margin
+
+If one wants a more structural quantum notion of mismatch, then one can compare the teacher and student quantum states directly:
+
+$$
+\gamma_{\rho}(\mathcal{D})
+=
+\inf_{\theta_S}
+\mathbb{E}_{x\sim\mathcal{D}}
+\left[
+1-F\!\left(\rho_T(x),\rho_S(x;\theta_S)\right)
+\right],
+$$
+
+where $F(\rho,\sigma)$ denotes the quantum fidelity. This margin is conceptually appealing because it probes mismatch before measurement compression, but it is usually much harder to estimate on real hardware.
+
+### 5. Observable-family constrained margin
+
+Sometimes the student is not only restricted by its circuit family but also by its allowed observable set $\mathcal{O}_S$. In that case, the mismatch margin should explicitly optimize over both parameters and measurement choices:
+
+$$
+\gamma_{\mathcal{O}}(\mathcal{D})
+=
+\inf_{\theta_S,\; O_S \in \mathcal{O}_S}
+\mathbb{E}_{x\sim\mathcal{D}}
+\left[
+\left|
+\operatorname{Tr}[O_S\rho_S(x;\theta_S)]
+-
+\operatorname{Tr}[O_T\rho_T(x)]
+\right|^2
+\right].
+$$
+
+This formulation isolates mismatch due to restricted readout rather than only restricted state preparation.
+
+## Decomposition of the Observed Distillation Loss
+
+In practice, the training loss observed after optimization mixes two effects:
+
+1. optimization failure
+2. irreducible mismatch
+
+Conceptually, one can write
+
+$$
+\mathcal{L}_{\mathrm{KD}}^{\mathrm{obs}}
+=
+\gamma(\mathcal{D}) + \mathcal{E}_{\mathrm{opt}},
+$$
+
+where $\mathcal{E}_{\mathrm{opt}}$ is the residual error due to imperfect training. This decomposition is schematic rather than exact in all settings, but it is a useful interpretation. A large final loss does not by itself prove expressivity mismatch; one must separate architectural limitations from optimization failure.
+
+## Practical Estimation
+
+The exact mismatch margin is usually intractable because it requires global optimization over the full student family. In practice, one estimates it empirically by running the best available training procedure:
+
+$$
+\hat{\gamma}(\mathcal{D})
+=
+\min_{r \in \mathcal{R}}
+\frac{1}{N}\sum_{i=1}^N
+\ell\!\left(
+f_S(x_i;\theta_S^{(r)}),
+f_T(x_i;\theta_T^\star)
+\right),
+$$
+
+where $\mathcal{R}$ indexes repeated training runs, restarts, or optimization strategies, and $\theta_S^{(r)}$ is the student obtained in run $r$.
+
+This empirical estimate should be interpreted carefully:
+
+- If $\hat{\gamma}$ is small and stable across runs, the student family is likely compatible with the teacher.
+- If $\hat{\gamma}$ is large but highly variable across runs, optimization may still be the dominant issue.
+- If $\hat{\gamma}$ remains large even under strong optimization, that is evidence for a true architectural mismatch.
+
+Since training rarely finds the global optimum, the empirical quantity is best viewed as an upper bound on the ideal mismatch floor achievable by the student family under the chosen loss.
+
+## Train-Test Margin Gap
+
+It is also useful to compare mismatch margins across training and test distributions:
+
+$$
+\gamma_{\mathrm{train}}
+:=
+\inf_{\theta_S}
+\mathbb{E}_{x\sim\mathcal{D}_{\mathrm{train}}}
+\left[
+\ell\!\left(f_S(x;\theta_S),f_T(x;\theta_T^\star)\right)
+\right],
+$$
+
+$$
+\gamma_{\mathrm{test}}
+:=
+\inf_{\theta_S}
+\mathbb{E}_{x\sim\mathcal{D}_{\mathrm{test}}}
+\left[
+\ell\!\left(f_S(x;\theta_S),f_T(x;\theta_T^\star)\right)
+\right].
+$$
+
+If
+
+$$
+\gamma_{\mathrm{train}} \ll \gamma_{\mathrm{test}},
+$$
+
+then the student may only match the teacher locally on the training region rather than globally on the broader task distribution.
+
+## Normalized Mismatch Margin
+
+To compare mismatch across tasks or output scales, one can define a normalized quantity such as
+
+$$
+\tilde{\gamma}
+=
+\frac{\gamma(\mathcal{D})}
+{\mathbb{E}_{x\sim\mathcal{D}}[\|f_T(x)\|_2^2] + \epsilon},
+$$
+
+where $\epsilon > 0$ prevents division by zero. This makes the mismatch margin easier to compare across different teacher architectures and datasets.
+
+## Depth-Based Mismatch Margin
+
+To isolate mismatch caused specifically by circuit-depth limitations, one can define a depth-indexed student function class
+
+$$
+\mathcal{F}_S^{(L)}
+:=
+\left\{
+f_S^{(L)}(\cdot;\theta)
+\right\}_{\theta},
+$$
+
+where $L$ is the student circuit depth. The corresponding depth-based mismatch margin is
+
+$$
+\gamma_L(\mathcal{D})
+:=
+\inf_{\theta}
+\mathbb{E}_{x\sim\mathcal{D}}
+\left[
+\ell\!\left(
+f_S^{(L)}(x;\theta),
+f_T(x;\theta_T^\star)
+\right)
+\right].
+$$
+
+This quantity measures the smallest teacher-student discrepancy achievable by any student restricted to depth $L$.
+
+### Scalar-output form
+
+If the teacher and student both output a scalar observable, then a natural specialization is
+
+$$
+\gamma_L(\mathcal{D})
+=
+\inf_{\theta}
+\mathbb{E}_{x\sim\mathcal{D}}
+\left[
+\left|
+f_S^{(L)}(x;\theta)-f_T(x;\theta_T^\star)
+\right|^2
+\right].
+$$
+
+This directly captures the irreducible output mismatch caused by restricting the student to depth $L$.
+
+### Monotonicity with depth
+
+In many ansatz families, increasing depth enlarges the student function class:
+
+$$
+\mathcal{F}_S^{(L)}
+\subseteq
+\mathcal{F}_S^{(L+1)}.
+$$
+
+As a result, the optimal mismatch margin is nonincreasing with depth:
+
+$$
+\gamma_{L+1}(\mathcal{D}) \le \gamma_L(\mathcal{D}).
+$$
+
+This expresses the intuition that extra depth can only improve the best achievable approximation or leave it unchanged.
+
+### Irreducible depth floor
+
+If the teacher relies on transformations unavailable to a shallow student, then for sufficiently small $L$,
+
+$$
+\gamma_L(\mathcal{D}) > 0.
+$$
+
+This nonzero value is the depth-induced approximation floor. It shows that even perfect optimization cannot remove the mismatch if the student's circuit is too shallow.
+
+### Critical depth
+
+For a tolerance level $\varepsilon > 0$, one can define the critical depth required to approximate the teacher:
+
+$$
+L_{\mathrm{crit}}
+:=
+\min
+\left\{
+L : \gamma_L(\mathcal{D}) \le \varepsilon
+\right\}.
+$$
+
+This gives a compact way to summarize how much depth the student needs before distillation becomes accurate enough for a chosen standard.
+
+### Unitary-level depth mismatch
+
+The same idea can be phrased at the unitary or state level. Let $\mathcal{U}_S^{(L)}$ denote the family of unitaries reachable by the student ansatz at depth $L$. Then one may define
+
+$$
+\gamma_L^{U}(\mathcal{D})
+:=
+\inf_{U \in \mathcal{U}_S^{(L)}}
+\mathbb{E}_{x\sim\mathcal{D}}
+\left[
+d\!\left(
+U\rho_x U^\dagger,
+\rho_T(x)
+\right)
+\right],
+$$
+
+where $\rho_T(x)$ is the teacher state and $d(\cdot,\cdot)$ is a state-distance measure such as infidelity or trace distance. This version captures mismatch before measurement compression.
+
+### Practical empirical estimator
+
+In experiments, the true depth-based margin is typically approximated by training students at several depths and taking the best observed loss:
+
+$$
+\hat{\gamma}_L
+=
+\min_{r \in \mathcal{R}}
+\frac{1}{N}\sum_{i=1}^N
+\ell\!\left(
+f_S^{(L)}(x_i;\theta^{(r)}),
+f_T(x_i;\theta_T^\star)
+\right),
+$$
+
+where $\mathcal{R}$ indexes multiple training runs, random restarts, or optimizers.
+
+The resulting depth profile
+
+$$
+L \mapsto \hat{\gamma}_L
+$$
+
+is useful for diagnosis:
+
+- A steep decrease suggests that insufficient depth is a major cause of mismatch.
+- A shallow decrease suggests that added depth helps only marginally.
+- A persistent plateau above zero suggests that other architectural mismatches remain even as depth grows.
+
+### Optimization-sensitive interpretation
+
+The empirical quantity should be interpreted as
+
+$$
+\hat{\gamma}_L
+=
+\gamma_L + \mathcal{E}_{\mathrm{opt}}^{(L)},
+$$
+
+where $\mathcal{E}_{\mathrm{opt}}^{(L)}$ is the optimization residual at depth $L$. Thus, a large observed margin does not by itself prove expressivity mismatch. Strong evidence for depth-induced mismatch comes when $\hat{\gamma}_L$ remains stably large across restarts and training strategies.
+
 ## Research Framing
 
 A useful way to state the issue is:
