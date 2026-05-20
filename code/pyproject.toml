@@ -18,6 +18,7 @@ dependencies = [
 [project.scripts]
 train-vqa-mnist = "vqa_mnist.train:main"
 compare-vqa-mnist = "vqa_mnist.compare:main"
+compare-vqa-layers = "vqa_mnist.compare_layers:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

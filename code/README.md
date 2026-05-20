@@ -19,6 +19,7 @@ code/
     └── vqa_mnist/
         ├── __init__.py
         ├── compare.py
+        ├── compare_layers.py
         ├── dataset.py
         ├── model.py
         └── train.py
@@ -158,6 +159,17 @@ compare-vqa-mnist --epochs 8
 ```
 
 This runs all supported ansatzes and writes a summary JSON file under `code/outputs/`.
+
+## Compare different layer counts
+
+To compare one ansatz across multiple layer depths:
+
+```bash
+cd /Users/hoangquan/Workspaces/QuantumDistillation/code
+compare-vqa-layers --ansatz strongly_entangling --epochs 8 --layer-values 1 2 3 4
+```
+
+This runs the selected ansatz once for each layer count and writes a summary JSON file under `code/outputs/`.
 
 ## Notes
 
