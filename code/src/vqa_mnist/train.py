@@ -5,6 +5,7 @@ import json
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from time import perf_counter
 
 import numpy as np
 import torch
@@ -94,6 +95,7 @@ def train_model(config: TrainingConfig) -> dict:
     )
 
     for epoch in range(1, config.epochs + 1):
+        epoch_start_time = perf_counter()
         permutation = rng.permutation(len(train_x))
         shuffled_x = train_x[permutation]
         shuffled_y = train_y[permutation]
@@ -122,8 +124,10 @@ def train_model(config: TrainingConfig) -> dict:
             val_y,
             loss_fn,
         )
+        epoch_time_seconds = float(perf_counter() - epoch_start_time)
         epoch_metrics = {
             "epoch": epoch,
+            "epoch_time_seconds": epoch_time_seconds,
             "batch_loss": float(np.mean(batch_losses)),
             "train_loss": train_metrics["loss"],
             "train_accuracy": train_metrics["accuracy"],
@@ -133,6 +137,7 @@ def train_model(config: TrainingConfig) -> dict:
         history.append(epoch_metrics)
         print(
             f"epoch={epoch:02d} "
+            f"time={epoch_metrics['epoch_time_seconds']:.2f}s "
             f"batch_loss={epoch_metrics['batch_loss']:.4f} "
             f"train_acc={epoch_metrics['train_accuracy']:.3f} "
             f"val_acc={epoch_metrics['val_accuracy']:.3f}"

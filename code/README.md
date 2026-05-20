@@ -56,6 +56,8 @@ Useful options:
 
 By default, the project trains, validates, and tests on the full dataset splits.
 
+Each training epoch prints its computing time and also stores it in the output JSON as `epoch_time_seconds`.
+
 ## Run with CUDA
 
 If your environment supports it, you can enable CUDA for both the PennyLane quantum simulator and the PyTorch readout path:
