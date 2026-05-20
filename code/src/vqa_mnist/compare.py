@@ -22,6 +22,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--val-limit", type=int, default=None)
     parser.add_argument("--test-limit", type=int, default=None)
     parser.add_argument(
+        "--device",
+        choices=("auto", "cpu", "cuda", "mps"),
+        default="auto",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("outputs"),
@@ -46,6 +51,7 @@ def main() -> None:
                 train_limit=args.train_limit,
                 val_limit=args.val_limit,
                 test_limit=args.test_limit,
+                device=args.device,
             )
         )
         summaries.append(

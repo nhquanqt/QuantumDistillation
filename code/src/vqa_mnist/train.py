@@ -29,6 +29,7 @@ class TrainingConfig:
     train_limit: int | None = None
     val_limit: int | None = None
     test_limit: int | None = None
+    device: str = "auto"
 
 
 def _as_torch_features(array: np.ndarray) -> torch.Tensor:
@@ -39,8 +40,29 @@ def _as_torch_labels(array: np.ndarray) -> torch.Tensor:
     return torch.tensor(np.argmax(array, axis=1), dtype=torch.long)
 
 
+def resolve_device(device_name: str) -> torch.device:
+    if device_name == "auto":
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        if torch.backends.mps.is_available():
+            return torch.device("mps")
+        return torch.device("cpu")
+    if device_name == "cuda":
+        if not torch.cuda.is_available():
+            raise ValueError("CUDA was requested, but torch.cuda.is_available() is False.")
+        return torch.device("cuda")
+    if device_name == "mps":
+        if not torch.backends.mps.is_available():
+            raise ValueError("MPS was requested, but torch.backends.mps.is_available() is False.")
+        return torch.device("mps")
+    if device_name == "cpu":
+        return torch.device("cpu")
+    raise ValueError(f"Unsupported device: {device_name}")
+
+
 def train_model(config: TrainingConfig) -> dict:
     torch.manual_seed(config.seed)
+    classical_device = resolve_device(config.device)
     splits = load_mnist8x8_splits(
         seed=config.seed,
         train_limit=config.train_limit,
@@ -48,18 +70,26 @@ def train_model(config: TrainingConfig) -> dict:
         test_limit=config.test_limit,
     )
     spec = ModelSpec(ansatz=config.ansatz, num_layers=config.layers)
-    model = VQADigitsClassifier(spec, seed=config.seed)
+    model = VQADigitsClassifier(
+        spec,
+        seed=config.seed,
+        classical_device=classical_device,
+    )
     train_x = _as_torch_features(splits.train_x)
-    train_y = _as_torch_labels(splits.train_y)
+    train_y = _as_torch_labels(splits.train_y).to(classical_device)
     val_x = _as_torch_features(splits.val_x)
-    val_y = _as_torch_labels(splits.val_y)
+    val_y = _as_torch_labels(splits.val_y).to(classical_device)
     test_x = _as_torch_features(splits.test_x)
-    test_y = _as_torch_labels(splits.test_y)
+    test_y = _as_torch_labels(splits.test_y).to(classical_device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     loss_fn = torch.nn.CrossEntropyLoss()
     rng = np.random.default_rng(config.seed)
     history: list[dict[str, float]] = []
+
+    print(
+        f"quantum_device=cpu classical_device={classical_device.type}"
+    )
 
     for epoch in range(1, config.epochs + 1):
         permutation = rng.permutation(len(train_x))
@@ -145,6 +175,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--val-limit", type=int, default=None)
     parser.add_argument("--test-limit", type=int, default=None)
     parser.add_argument(
+        "--device",
+        choices=("auto", "cpu", "cuda", "mps"),
+        default="auto",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("outputs"),
@@ -165,6 +200,7 @@ def main() -> None:
         train_limit=args.train_limit,
         val_limit=args.val_limit,
         test_limit=args.test_limit,
+        device=args.device,
     )
     results = train_model(config)
     output_path = save_run(results, args.output_dir)

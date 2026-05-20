@@ -51,8 +51,31 @@ Useful options:
 - `--test-limit`: optionally cap the test set
 - `--layers`: number of variational layers
 - `--learning-rate`: Adam step size
+- `--device`: `auto`, `cpu`, `cuda`, or `mps`
 
 By default, the project trains, validates, and tests on the full dataset splits.
+
+## Run with CUDA
+
+If your PyTorch install has CUDA support, you can request GPU execution for the Torch readout and loss path with:
+
+```bash
+cd /Users/hoangquan/Workspaces/QuantumDistillation/code
+train-vqa-mnist --ansatz strongly_entangling --epochs 12 --device cuda
+```
+
+You can also compare all ansatzes with:
+
+```bash
+cd /Users/hoangquan/Workspaces/QuantumDistillation/code
+compare-vqa-mnist --epochs 8 --device cuda
+```
+
+Current limitation:
+
+- The PennyLane circuit in this project uses `default.qubit`, so the quantum simulation itself still runs on CPU.
+- `--device cuda` accelerates the PyTorch readout layer and loss computation, not the underlying quantum simulator.
+- If CUDA is requested but unavailable, the script raises a clear error.
 
 ## Ansatz design
 
@@ -99,6 +122,29 @@ The quantum circuit returns the full probability vector over all 6-qubit basis s
 That means the ansatz is being used mainly as a quantum feature transformer. The final class decision is made by the PyTorch readout head, which maps the 64 quantum probabilities to 10 digit classes.
 
 This design makes it easy to compare different ansatz families under the same encoding and readout setup.
+
+## Readout design
+
+The readout is the final classical layer that converts the quantum circuit output into digit-class logits.
+
+For 6 qubits, the circuit returns a 64-dimensional probability vector, one probability for each computational-basis state. This vector is treated as a learned quantum feature representation rather than a final prediction.
+
+The PyTorch readout layer is a linear map from 64 to 10:
+
+$$
+z = Wp + b,
+$$
+
+where:
+
+- $p$ is the 64-dimensional probability vector from the quantum circuit
+- $W$ is a trainable `10 x 64` weight matrix
+- $b$ is a trainable 10-dimensional bias
+- $z$ is the 10-dimensional logit vector
+
+These logits are passed directly to cross-entropy loss during training. In other words, the model does not manually apply softmax in the code. The classical loss handles the final probability normalization internally.
+
+This design keeps the quantum circuit focused on feature transformation while the classical readout performs the final 10-class decision. It is a simple hybrid architecture that makes ansatz comparisons easier and more stable.
 
 ## Compare several VQAs
 

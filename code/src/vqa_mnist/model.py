@@ -68,10 +68,16 @@ def build_qnode(spec: ModelSpec):
 
 
 class VQADigitsClassifier(torch.nn.Module):
-    def __init__(self, spec: ModelSpec, seed: int = 123) -> None:
+    def __init__(
+        self,
+        spec: ModelSpec,
+        seed: int = 123,
+        classical_device: torch.device | None = None,
+    ) -> None:
         super().__init__()
         self.spec = spec
         self.qnode = build_qnode(spec)
+        self.classical_device = classical_device or torch.device("cpu")
 
         generator = torch.Generator()
         generator.manual_seed(seed)
@@ -96,13 +102,18 @@ class VQADigitsClassifier(torch.nn.Module):
                 )
             )
             self.readout.bias.zero_()
+        self.readout.to(self.classical_device)
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
         if features.ndim == 1:
-            probs = self.qnode(features, self.q_params)
+            probs = self.qnode(features.to("cpu"), self.q_params)
+            probs = probs.to(self.classical_device)
             return self.readout(probs)
 
-        logits = [self.readout(self.qnode(sample, self.q_params)) for sample in features]
+        logits = []
+        for sample in features:
+            probs = self.qnode(sample.to("cpu"), self.q_params)
+            logits.append(self.readout(probs.to(self.classical_device)))
         return torch.stack(logits)
 
 
