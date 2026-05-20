@@ -18,9 +18,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--learning-rate", type=float, default=0.05)
     parser.add_argument("--layers", type=int, default=2)
     parser.add_argument("--seed", type=int, default=123)
-    parser.add_argument("--train-limit", type=int, default=384)
-    parser.add_argument("--val-limit", type=int, default=128)
-    parser.add_argument("--test-limit", type=int, default=256)
+    parser.add_argument("--train-limit", type=int, default=None)
+    parser.add_argument("--val-limit", type=int, default=None)
+    parser.add_argument("--test-limit", type=int, default=None)
     parser.add_argument(
         "--output-dir",
         type=Path,

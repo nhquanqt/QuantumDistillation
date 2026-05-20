@@ -39,22 +39,72 @@ pip install -e .
 
 ```bash
 cd /Users/hoangquan/Workspaces/QuantumDistillation/code
-train-vqa-mnist --ansatz strongly_entangling --epochs 12 --train-limit 512
+train-vqa-mnist --ansatz strongly_entangling --epochs 12
 ```
 
 Useful options:
 
 - `--ansatz`: `basic`, `hardware_efficient`, or `strongly_entangling`
 - `--epochs`: training epochs
-- `--train-limit`: cap the training set for faster experiments
+- `--train-limit`: optionally cap the training set for faster experiments
+- `--val-limit`: optionally cap the validation set
+- `--test-limit`: optionally cap the test set
 - `--layers`: number of variational layers
 - `--learning-rate`: Adam step size
+
+By default, the project trains, validates, and tests on the full dataset splits.
+
+## Ansatz design
+
+This project uses a hybrid quantum classifier with the following structure:
+
+1. Flatten each 8x8 image into a 64-dimensional vector.
+2. Normalize the vector and amplitude-embed it into a 6-qubit quantum state.
+3. Apply a trainable variational ansatz.
+4. Measure the full 64-dimensional computational-basis probability vector.
+5. Feed that vector into a small PyTorch linear layer for 10-class prediction.
+
+The key design choice is that `2^6 = 64`, so 6 qubits are enough to represent the full 8x8 image after flattening.
+
+### Supported ansatzes
+
+#### `basic`
+
+Each layer applies:
+
+- `RY` and `RZ` on every qubit
+- a ring of `CNOT` gates connecting qubit `i` to qubit `(i + 1) mod n`
+
+This is the simplest ansatz in the project. It uses 2 trainable parameters per qubit per layer and is a good baseline when you want a smaller, easier-to-interpret circuit.
+
+#### `hardware_efficient`
+
+Each layer applies:
+
+- `RX`, `RY`, and `RZ` on every qubit
+- nearest-neighbor `CZ` gates along the qubit line
+
+This is a more expressive layered circuit with 3 trainable parameters per qubit per layer. It is meant to be a stronger generic ansatz while still keeping a simple, hardware-friendly structure.
+
+#### `strongly_entangling`
+
+This uses PennyLane's built-in `StronglyEntanglingLayers` template.
+
+It is the richest ansatz in the project and serves as the most expressive default option. If you want a stronger baseline without hand-designing the entangling pattern yourself, this is usually the best starting point.
+
+### Why the model measures probabilities instead of a few observables
+
+The quantum circuit returns the full probability vector over all 6-qubit basis states instead of only measuring one expectation value per class.
+
+That means the ansatz is being used mainly as a quantum feature transformer. The final class decision is made by the PyTorch readout head, which maps the 64 quantum probabilities to 10 digit classes.
+
+This design makes it easy to compare different ansatz families under the same encoding and readout setup.
 
 ## Compare several VQAs
 
 ```bash
 cd /Users/hoangquan/Workspaces/QuantumDistillation/code
-compare-vqa-mnist --epochs 8 --train-limit 384
+compare-vqa-mnist --epochs 8
 ```
 
 This runs all supported ansatzes and writes a summary JSON file under `code/outputs/`.

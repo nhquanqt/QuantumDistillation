@@ -26,9 +26,9 @@ class TrainingConfig:
     learning_rate: float = 0.05
     layers: int = 2
     seed: int = 123
-    train_limit: int | None = 512
-    val_limit: int | None = 128
-    test_limit: int | None = 256
+    train_limit: int | None = None
+    val_limit: int | None = None
+    test_limit: int | None = None
 
 
 def _as_torch_features(array: np.ndarray) -> torch.Tensor:
@@ -141,9 +141,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--learning-rate", type=float, default=0.05)
     parser.add_argument("--layers", type=int, default=2)
     parser.add_argument("--seed", type=int, default=123)
-    parser.add_argument("--train-limit", type=int, default=512)
-    parser.add_argument("--val-limit", type=int, default=128)
-    parser.add_argument("--test-limit", type=int, default=256)
+    parser.add_argument("--train-limit", type=int, default=None)
+    parser.add_argument("--val-limit", type=int, default=None)
+    parser.add_argument("--test-limit", type=int, default=None)
     parser.add_argument(
         "--output-dir",
         type=Path,
