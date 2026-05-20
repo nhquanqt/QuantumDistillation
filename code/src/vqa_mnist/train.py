@@ -9,8 +9,8 @@ from pathlib import Path
 import numpy as onp
 import torch
 
-from vqa_mnist.dataset import load_mnist8x8_splits
-from vqa_mnist.model import (
+from dataset import load_mnist8x8_splits
+from model import (
     ModelSpec,
     SUPPORTED_ANSATZES,
     evaluate_metrics,
@@ -147,7 +147,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("/Users/hoangquan/Workspaces/QuantumDistillation/code/outputs"),
+        default=Path("outputs"),
     )
     return parser
 

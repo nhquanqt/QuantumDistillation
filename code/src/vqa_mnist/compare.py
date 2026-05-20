@@ -5,8 +5,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from vqa_mnist.model import SUPPORTED_ANSATZES
-from vqa_mnist.train import TrainingConfig, train_model
+from model import SUPPORTED_ANSATZES
+from train import TrainingConfig, train_model
 
 
 def build_parser() -> argparse.ArgumentParser:
