@@ -46,6 +46,7 @@ train-vqa-mnist --ansatz strongly_entangling --epochs 12
 Useful options:
 
 - `--ansatz`: `basic`, `hardware_efficient`, or `strongly_entangling`
+- `--readout-mode`: `linear` or `probs_only`
 - `--epochs`: training epochs
 - `--train-limit`: optionally cap the training set for faster experiments
 - `--val-limit`: optionally cap the validation set
@@ -58,6 +59,15 @@ Useful options:
 By default, the project trains, validates, and tests on the full dataset splits.
 
 Each training epoch prints its computing time and also stores it in the output JSON as `epoch_time_seconds`.
+
+If you want to classify with `qml.probs` only and no trainable classical head:
+
+```bash
+cd /Users/hoangquan/Workspaces/QuantumDistillation/code
+train-vqa-mnist --ansatz strongly_entangling --readout-mode probs_only
+```
+
+In `probs_only` mode, the circuit still returns the full 64-dimensional probability vector. The classifier then groups basis-state probabilities into 10 class probabilities using `basis_index mod 10`, and trains directly on those class probabilities without a learnable linear readout layer.
 
 ## Run with CUDA
 
@@ -150,6 +160,8 @@ where:
 These logits are passed directly to cross-entropy loss during training. In other words, the model does not manually apply softmax in the code. The classical loss handles the final probability normalization internally.
 
 This design keeps the quantum circuit focused on feature transformation while the classical readout performs the final 10-class decision. It is a simple hybrid architecture that makes ansatz comparisons easier and more stable.
+
+An alternative is `--readout-mode probs_only`, which removes the trainable classical head and uses only `qml.probs` to produce class probabilities.
 
 ## Compare several VQAs
 

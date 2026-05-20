@@ -91,12 +91,14 @@ class VQADigitsClassifier(torch.nn.Module):
         seed: int = 123,
         classical_device: torch.device | None = None,
         quantum_device: str = "cpu",
+        readout_mode: str = "linear",
     ) -> None:
         super().__init__()
         self.spec = spec
         self.quantum_device = quantum_device
         self.qnode = build_qnode(spec, quantum_device=quantum_device)
         self.classical_device = classical_device or torch.device("cpu")
+        self.readout_mode = readout_mode
 
         generator = torch.Generator()
         generator.manual_seed(seed)
@@ -106,33 +108,52 @@ class VQADigitsClassifier(torch.nn.Module):
             init_scale
             * torch.randn(parameter_shape(spec), generator=generator, dtype=torch.float64)
         )
-        self.readout = torch.nn.Linear(
-            2**spec.num_qubits,
-            spec.num_classes,
-            dtype=torch.float64,
-        )
-        with torch.no_grad():
-            self.readout.weight.copy_(
-                init_scale
-                * torch.randn(
-                    self.readout.weight.shape,
-                    generator=generator,
-                    dtype=torch.float64,
-                )
+        if self.readout_mode == "linear":
+            self.readout = torch.nn.Linear(
+                2**spec.num_qubits,
+                spec.num_classes,
+                dtype=torch.float64,
             )
-            self.readout.bias.zero_()
-        self.readout.to(self.classical_device)
+            with torch.no_grad():
+                self.readout.weight.copy_(
+                    init_scale
+                    * torch.randn(
+                        self.readout.weight.shape,
+                        generator=generator,
+                        dtype=torch.float64,
+                    )
+                )
+                self.readout.bias.zero_()
+            self.readout.to(self.classical_device)
+        elif self.readout_mode == "probs_only":
+            self.readout = None
+        else:
+            raise ValueError(f"Unsupported readout_mode: {self.readout_mode}")
+
+    def _probs_to_logits(self, probs: torch.Tensor) -> torch.Tensor:
+        if self.readout_mode == "linear":
+            return self.readout(probs)
+
+        class_probs = torch.zeros(
+            self.spec.num_classes,
+            dtype=probs.dtype,
+            device=probs.device,
+        )
+        for basis_index, basis_prob in enumerate(probs):
+            class_probs[basis_index % self.spec.num_classes] += basis_prob
+        return torch.log(class_probs + 1e-12)
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
         if features.ndim == 1:
             probs = self.qnode(features.to("cpu"), self.q_params)
             probs = probs.to(self.classical_device)
-            return self.readout(probs)
+            return self._probs_to_logits(probs)
 
         logits = []
         for sample in features:
             probs = self.qnode(sample.to("cpu"), self.q_params)
-            logits.append(self.readout(probs.to(self.classical_device)))
+            probs = probs.to(self.classical_device)
+            logits.append(self._probs_to_logits(probs))
         return torch.stack(logits)
 
 

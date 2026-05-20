@@ -14,6 +14,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="Train and compare all supported VQA ansatzes."
     )
     parser.add_argument("--epochs", type=int, default=8)
+    parser.add_argument(
+        "--readout-mode",
+        choices=("linear", "probs_only"),
+        default="linear",
+    )
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--learning-rate", type=float, default=0.05)
     parser.add_argument("--layers", type=int, default=2)
@@ -48,6 +53,7 @@ def main() -> None:
         results = train_model(
             TrainingConfig(
                 ansatz=ansatz,
+                readout_mode=args.readout_mode,
                 epochs=args.epochs,
                 batch_size=args.batch_size,
                 learning_rate=args.learning_rate,
@@ -63,6 +69,7 @@ def main() -> None:
         summaries.append(
             {
                 "ansatz": ansatz,
+                "readout_mode": args.readout_mode,
                 "test_loss": results["test_metrics"]["loss"],
                 "test_accuracy": results["test_metrics"]["accuracy"],
                 "final_val_accuracy": results["history"][-1]["val_accuracy"],

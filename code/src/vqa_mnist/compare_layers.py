@@ -18,6 +18,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=SUPPORTED_ANSATZES,
         default="strongly_entangling",
     )
+    parser.add_argument(
+        "--readout-mode",
+        choices=("linear", "probs_only"),
+        default="linear",
+    )
     parser.add_argument("--epochs", type=int, default=8)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--learning-rate", type=float, default=0.05)
@@ -59,6 +64,7 @@ def main() -> None:
         results = train_model(
             TrainingConfig(
                 ansatz=args.ansatz,
+                readout_mode=args.readout_mode,
                 epochs=args.epochs,
                 batch_size=args.batch_size,
                 learning_rate=args.learning_rate,
@@ -74,6 +80,7 @@ def main() -> None:
         summaries.append(
             {
                 "ansatz": args.ansatz,
+                "readout_mode": args.readout_mode,
                 "layers": layer_count,
                 "test_loss": results["test_metrics"]["loss"],
                 "test_accuracy": results["test_metrics"]["accuracy"],

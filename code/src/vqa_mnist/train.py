@@ -22,6 +22,7 @@ from model import (
 @dataclass
 class TrainingConfig:
     ansatz: str = "strongly_entangling"
+    readout_mode: str = "linear"
     epochs: int = 10
     batch_size: int = 16
     learning_rate: float = 0.05
@@ -77,6 +78,7 @@ def train_model(config: TrainingConfig) -> dict:
         seed=config.seed,
         classical_device=classical_device,
         quantum_device=config.quantum_device,
+        readout_mode=config.readout_mode,
     )
     train_x = _as_torch_features(splits.train_x)
     train_y = _as_torch_labels(splits.train_y).to(classical_device)
@@ -92,6 +94,7 @@ def train_model(config: TrainingConfig) -> dict:
 
     print(
         f"quantum_device={config.quantum_device} classical_device={classical_device.type}"
+        f" readout_mode={config.readout_mode}"
     )
 
     for epoch in range(1, config.epochs + 1):
@@ -156,8 +159,16 @@ def train_model(config: TrainingConfig) -> dict:
         "test_metrics": test_metrics,
         "final_parameters": {
             "q_params": model.q_params.detach().cpu().numpy().tolist(),
-            "readout_weights": model.readout.weight.detach().cpu().numpy().tolist(),
-            "readout_bias": model.readout.bias.detach().cpu().numpy().tolist(),
+            "readout_weights": (
+                model.readout.weight.detach().cpu().numpy().tolist()
+                if model.readout is not None
+                else None
+            ),
+            "readout_bias": (
+                model.readout.bias.detach().cpu().numpy().tolist()
+                if model.readout is not None
+                else None
+            ),
         },
     }
 
@@ -173,6 +184,11 @@ def save_run(results: dict, output_dir: Path) -> Path:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ansatz", choices=SUPPORTED_ANSATZES, default="strongly_entangling")
+    parser.add_argument(
+        "--readout-mode",
+        choices=("linear", "probs_only"),
+        default="linear",
+    )
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--learning-rate", type=float, default=0.05)
@@ -204,6 +220,7 @@ def main() -> None:
     args = parser.parse_args()
     config = TrainingConfig(
         ansatz=args.ansatz,
+        readout_mode=args.readout_mode,
         epochs=args.epochs,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
