@@ -2,30 +2,30 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import numpy as onp
+import numpy as np
 from sklearn.datasets import load_digits
 from sklearn.model_selection import train_test_split
 
 
 @dataclass
 class DigitsSplits:
-    train_x: onp.ndarray
-    train_y: onp.ndarray
-    val_x: onp.ndarray
-    val_y: onp.ndarray
-    test_x: onp.ndarray
-    test_y: onp.ndarray
+    train_x: np.ndarray
+    train_y: np.ndarray
+    val_x: np.ndarray
+    val_y: np.ndarray
+    test_x: np.ndarray
+    test_y: np.ndarray
 
 
-def _normalize_rows(features: onp.ndarray, eps: float = 1e-12) -> onp.ndarray:
-    norms = onp.linalg.norm(features, axis=1, keepdims=True)
-    norms = onp.maximum(norms, eps)
+def _normalize_rows(features: np.ndarray, eps: float = 1e-12) -> np.ndarray:
+    norms = np.linalg.norm(features, axis=1, keepdims=True)
+    norms = np.maximum(norms, eps)
     return features / norms
 
 
-def _one_hot(labels: onp.ndarray, num_classes: int = 10) -> onp.ndarray:
-    encoded = onp.zeros((labels.shape[0], num_classes), dtype=onp.float64)
-    encoded[onp.arange(labels.shape[0]), labels] = 1.0
+def _one_hot(labels: np.ndarray, num_classes: int = 10) -> np.ndarray:
+    encoded = np.zeros((labels.shape[0], num_classes), dtype=np.float64)
+    encoded[np.arange(labels.shape[0]), labels] = 1.0
     return encoded
 
 
@@ -45,9 +45,9 @@ def load_mnist8x8_splits(
     """
 
     digits = load_digits()
-    features = digits.images.reshape((-1, 64)).astype(onp.float64) / 16.0
+    features = digits.images.reshape((-1, 64)).astype(np.float64) / 16.0
     features = _normalize_rows(features)
-    labels = digits.target.astype(onp.int64)
+    labels = digits.target.astype(np.int64)
 
     train_x, test_x, train_y_raw, test_y_raw = train_test_split(
         features,

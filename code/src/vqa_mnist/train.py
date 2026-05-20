@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-import numpy as onp
+import numpy as np
 import torch
 
 from dataset import load_mnist8x8_splits
@@ -31,12 +31,12 @@ class TrainingConfig:
     test_limit: int | None = 256
 
 
-def _as_torch_features(array: onp.ndarray) -> torch.Tensor:
+def _as_torch_features(array: np.ndarray) -> torch.Tensor:
     return torch.tensor(array, dtype=torch.float64)
 
 
-def _as_torch_labels(array: onp.ndarray) -> torch.Tensor:
-    return torch.tensor(onp.argmax(array, axis=1), dtype=torch.long)
+def _as_torch_labels(array: np.ndarray) -> torch.Tensor:
+    return torch.tensor(np.argmax(array, axis=1), dtype=torch.long)
 
 
 def train_model(config: TrainingConfig) -> dict:
@@ -58,7 +58,7 @@ def train_model(config: TrainingConfig) -> dict:
 
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     loss_fn = torch.nn.CrossEntropyLoss()
-    rng = onp.random.default_rng(config.seed)
+    rng = np.random.default_rng(config.seed)
     history: list[dict[str, float]] = []
 
     for epoch in range(1, config.epochs + 1):
@@ -92,7 +92,7 @@ def train_model(config: TrainingConfig) -> dict:
         )
         epoch_metrics = {
             "epoch": epoch,
-            "batch_loss": float(onp.mean(batch_losses)),
+            "batch_loss": float(np.mean(batch_losses)),
             "train_loss": train_metrics["loss"],
             "train_accuracy": train_metrics["accuracy"],
             "val_loss": val_metrics["loss"],
