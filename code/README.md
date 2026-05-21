@@ -46,7 +46,7 @@ train-vqa-mnist --ansatz strongly_entangling --epochs 12
 Useful options:
 
 - `--ansatz`: `basic`, `hardware_efficient`, or `strongly_entangling`
-- `--readout-mode`: `linear` or `probs_only`
+- `--readout-mode`: `linear`, `probs_only`, or `learnable_observable`
 - `--num-classes`: `10` or `4`
 - `--epochs`: training epochs
 - `--train-limit`: optionally cap the training set for faster experiments
@@ -68,7 +68,16 @@ cd /Users/hoangquan/Workspaces/QuantumDistillation/code
 train-vqa-mnist --ansatz strongly_entangling --readout-mode probs_only
 ```
 
-In `probs_only` mode, the circuit still returns the full 64-dimensional probability vector. The classifier then groups basis-state probabilities into 10 class probabilities using `basis_index mod 10`, and trains directly on those class probabilities without a learnable linear readout layer.
+In `probs_only` mode, the circuit still returns the full 64-dimensional probability vector. The classifier then groups basis-state probabilities into class probabilities using `basis_index mod num_classes`, and trains directly on those class probabilities without a learnable linear readout layer.
+
+If you want a learnable observable based on [Learning to Program Quantum Measurements for Machine Learning](https://arxiv.org/pdf/2505.13525):
+
+```bash
+cd /Users/hoangquan/Workspaces/QuantumDistillation/code
+train-vqa-mnist --ansatz strongly_entangling --readout-mode learnable_observable
+```
+
+In `learnable_observable` mode, the circuit returns the quantum state and a small neural controller generates a Hermitian observable for each class on a per-input basis. The class logits are the expectation values of those input-conditioned observables, which follows the paper's idea of programmable quantum measurements.
 
 If you want to train on 4 classes only:
 
@@ -172,6 +181,8 @@ These logits are passed directly to cross-entropy loss during training. In other
 This design keeps the quantum circuit focused on feature transformation while the classical readout performs the final 10-class decision. It is a simple hybrid architecture that makes ansatz comparisons easier and more stable.
 
 An alternative is `--readout-mode probs_only`, which removes the trainable classical head and uses only `qml.probs` to produce class probabilities. In that mode, the basis-state probabilities are grouped into either 10 or 4 class probabilities depending on `--num-classes`.
+
+Another alternative is `--readout-mode learnable_observable`, where a neural controller programs Hermitian observables dynamically and the readout uses expectation values instead of a linear head.
 
 ## Compare several VQAs
 

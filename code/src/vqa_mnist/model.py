@@ -42,6 +42,10 @@ def parameter_shape(spec: ModelSpec) -> tuple[int, ...]:
     raise ValueError(f"Unsupported ansatz: {spec.ansatz}")
 
 
+def hermitian_parameter_count(matrix_dim: int) -> int:
+    return matrix_dim * matrix_dim
+
+
 def build_qnode(spec: ModelSpec, quantum_device: str = "cpu"):
     device_name = resolve_quantum_device_name(quantum_device)
     try:
@@ -79,9 +83,37 @@ def build_qnode(spec: ModelSpec, quantum_device: str = "cpu"):
         else:
             raise ValueError(f"Unsupported ansatz: {spec.ansatz}")
 
-        return qml.probs(wires=wires)
+        return qml.state()
 
     return circuit
+
+
+class HermitianObservableProgrammer(torch.nn.Module):
+    def __init__(
+        self,
+        input_dim: int,
+        matrix_dim: int,
+        num_classes: int,
+        hidden_dim: int = 128,
+    ) -> None:
+        super().__init__()
+        self.matrix_dim = matrix_dim
+        self.num_classes = num_classes
+        self.network = torch.nn.Sequential(
+            torch.nn.Linear(input_dim, hidden_dim, dtype=torch.float64),
+            torch.nn.SiLU(),
+            torch.nn.Linear(
+                hidden_dim,
+                num_classes * hermitian_parameter_count(matrix_dim),
+                dtype=torch.float64,
+            ),
+        )
+
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        return self.network(features).view(
+            self.num_classes,
+            hermitian_parameter_count(self.matrix_dim),
+        )
 
 
 class VQADigitsClassifier(torch.nn.Module):
@@ -104,13 +136,14 @@ class VQADigitsClassifier(torch.nn.Module):
         generator.manual_seed(seed)
 
         init_scale = 0.01
+        state_dim = 2**spec.num_qubits
         self.q_params = torch.nn.Parameter(
             init_scale
             * torch.randn(parameter_shape(spec), generator=generator, dtype=torch.float64)
         )
         if self.readout_mode == "linear":
             self.readout = torch.nn.Linear(
-                2**spec.num_qubits,
+                state_dim,
                 spec.num_classes,
                 dtype=torch.float64,
             )
@@ -125,12 +158,58 @@ class VQADigitsClassifier(torch.nn.Module):
                 )
                 self.readout.bias.zero_()
             self.readout.to(self.classical_device)
+            self.observable_programmer = None
         elif self.readout_mode == "probs_only":
             self.readout = None
+            self.observable_programmer = None
+        elif self.readout_mode == "learnable_observable":
+            self.readout = None
+            self.observable_programmer = HermitianObservableProgrammer(
+                input_dim=state_dim,
+                matrix_dim=state_dim,
+                num_classes=spec.num_classes,
+            ).to(self.classical_device)
         else:
             raise ValueError(f"Unsupported readout_mode: {self.readout_mode}")
 
-    def _probs_to_logits(self, probs: torch.Tensor) -> torch.Tensor:
+    def _state_to_probs(self, state: torch.Tensor) -> torch.Tensor:
+        return torch.abs(state) ** 2
+
+    def _observable_parameters_to_hermitian(
+        self,
+        observable_params: torch.Tensor,
+    ) -> torch.Tensor:
+        matrix_dim = 2**self.spec.num_qubits
+        num_off_diagonal = matrix_dim * (matrix_dim - 1) // 2
+        diagonal = observable_params[:, :matrix_dim]
+        upper_real = observable_params[:, matrix_dim : matrix_dim + num_off_diagonal]
+        upper_imag = observable_params[:, matrix_dim + num_off_diagonal :]
+
+        observables = torch.zeros(
+            (self.spec.num_classes, matrix_dim, matrix_dim),
+            dtype=torch.complex128,
+            device=observable_params.device,
+        )
+        diagonal_indices = torch.arange(matrix_dim, device=observable_params.device)
+        observables[:, diagonal_indices, diagonal_indices] = diagonal.to(torch.complex128)
+
+        row_indices, col_indices = torch.triu_indices(
+            matrix_dim,
+            matrix_dim,
+            offset=1,
+            device=observable_params.device,
+        )
+        upper_values = upper_real.to(torch.complex128) + 1j * upper_imag.to(
+            torch.complex128
+        )
+        observables[:, row_indices, col_indices] = upper_values
+        observables[:, col_indices, row_indices] = torch.conj(upper_values)
+        return observables
+
+    def _probs_to_logits(
+        self,
+        probs: torch.Tensor,
+    ) -> torch.Tensor:
         if self.readout_mode == "linear":
             return self.readout(probs)
 
@@ -143,16 +222,31 @@ class VQADigitsClassifier(torch.nn.Module):
             class_probs[basis_index % self.spec.num_classes] += basis_prob
         return torch.log(class_probs + 1e-12)
 
+    def _state_to_observable_logits(
+        self,
+        state: torch.Tensor,
+        features: torch.Tensor,
+    ) -> torch.Tensor:
+        observable_params = self.observable_programmer(features.to(self.classical_device))
+        observables = self._observable_parameters_to_hermitian(observable_params)
+        state = state.to(self.classical_device).to(torch.complex128)
+        return torch.einsum("i,cij,j->c", torch.conj(state), observables, state).real
+
     def forward(self, features: torch.Tensor) -> torch.Tensor:
         if features.ndim == 1:
-            probs = self.qnode(features.to("cpu"), self.q_params)
-            probs = probs.to(self.classical_device)
+            state = self.qnode(features.to("cpu"), self.q_params)
+            if self.readout_mode == "learnable_observable":
+                return self._state_to_observable_logits(state, features)
+            probs = self._state_to_probs(state).to(self.classical_device)
             return self._probs_to_logits(probs)
 
         logits = []
         for sample in features:
-            probs = self.qnode(sample.to("cpu"), self.q_params)
-            probs = probs.to(self.classical_device)
+            state = self.qnode(sample.to("cpu"), self.q_params)
+            if self.readout_mode == "learnable_observable":
+                logits.append(self._state_to_observable_logits(state, sample))
+                continue
+            probs = self._state_to_probs(state).to(self.classical_device)
             logits.append(self._probs_to_logits(probs))
         return torch.stack(logits)
 

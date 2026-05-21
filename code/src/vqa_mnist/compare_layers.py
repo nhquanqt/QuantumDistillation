@@ -20,7 +20,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--readout-mode",
-        choices=("linear", "probs_only"),
+        choices=("linear", "probs_only", "learnable_observable"),
         default="linear",
     )
     parser.add_argument(

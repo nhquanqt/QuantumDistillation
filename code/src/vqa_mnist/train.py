@@ -64,6 +64,15 @@ def resolve_device(device_name: str) -> torch.device:
     raise ValueError(f"Unsupported device: {device_name}")
 
 
+def serialize_state_dict(module: torch.nn.Module | None) -> dict[str, list] | None:
+    if module is None:
+        return None
+    return {
+        key: value.detach().cpu().numpy().tolist()
+        for key, value in module.state_dict().items()
+    }
+
+
 def train_model(config: TrainingConfig) -> dict:
     torch.manual_seed(config.seed)
     classical_device = resolve_device(config.device)
@@ -175,6 +184,7 @@ def train_model(config: TrainingConfig) -> dict:
                 if model.readout is not None
                 else None
             ),
+            "observable_programmer": serialize_state_dict(model.observable_programmer),
         },
     }
 
@@ -192,7 +202,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ansatz", choices=SUPPORTED_ANSATZES, default="strongly_entangling")
     parser.add_argument(
         "--readout-mode",
-        choices=("linear", "probs_only"),
+        choices=("linear", "probs_only", "learnable_observable"),
         default="linear",
     )
     parser.add_argument(
