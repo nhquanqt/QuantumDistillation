@@ -184,6 +184,111 @@ An alternative is `--readout-mode probs_only`, which removes the trainable class
 
 Another alternative is `--readout-mode learnable_observable`, where a neural controller programs Hermitian observables dynamically and the readout uses expectation values instead of a linear head.
 
+## Learnable observable details
+
+The `learnable_observable` mode is inspired by the paper [Learning to Program Quantum Measurements for Machine Learning](https://arxiv.org/pdf/2505.13525). The main idea is to make the measurement itself trainable and data-conditioned instead of fixing a small set of observables in advance.
+
+### High-level idea
+
+In the standard `linear` mode, the pipeline is:
+
+1. Prepare a quantum state with amplitude embedding and a variational ansatz.
+2. Convert that state to basis-state probabilities.
+3. Apply a classical linear layer to map those probabilities to class logits.
+
+In `learnable_observable` mode, the pipeline changes to:
+
+1. Prepare a quantum state with amplitude embedding and a variational ansatz.
+2. Keep the full quantum state instead of immediately reducing it to probabilities.
+3. Use a neural controller to generate one Hermitian observable per class for the current input.
+4. Compute the expectation value of each observable on the current quantum state.
+5. Use those expectation values as class logits.
+
+So the classifier is no longer asking, “How should a fixed classical head interpret the measurement output?” It is asking, “What measurement should we perform for this specific input?”
+
+### What is learnable in this mode
+
+There are two trainable parts:
+
+- The variational circuit parameters `q_params`, which still control how the input is mapped into a quantum state.
+- The observable programmer network, which generates measurement operators from the input features.
+
+The observable programmer is a small MLP:
+
+- Input: the 64-dimensional flattened image vector
+- Hidden layer: 128 units with `SiLU`
+- Output: enough parameters to build one full Hermitian matrix per class
+
+For 6 qubits, the Hilbert-space dimension is 64, so each observable is a `64 x 64` Hermitian matrix.
+
+### How the Hermitian observable is parameterized
+
+Each class observable is built from:
+
+- A real diagonal
+- Real upper-triangular entries
+- Imaginary upper-triangular entries
+
+These values are assembled into a complex Hermitian matrix by reflecting the upper triangle onto the lower triangle with complex conjugation. This guarantees that the resulting observable is Hermitian, so its expectation value is real.
+
+### How logits are computed
+
+If the quantum circuit outputs a state vector $|\psi(x)\rangle$ and the programmer generates one observable $O_c(x)$ for class $c$, then the class logit is
+
+$$
+z_c(x) = \langle \psi(x) | O_c(x) | \psi(x) \rangle.
+$$
+
+The model computes one such value for each class and passes the resulting logit vector into cross-entropy loss.
+
+### Why this is different from `qml.probs` and `linear`
+
+`probs_only`:
+
+- Uses only basis-state probabilities
+- Has no trainable classical head
+- Groups probabilities into class buckets with a fixed rule
+
+`linear`:
+
+- Uses basis-state probabilities
+- Applies a trainable but input-independent classical linear head
+
+`learnable_observable`:
+
+- Uses the full quantum state
+- Learns the measurement itself
+- Makes the measurement depend on the input
+
+This is strictly richer than a fixed linear interpretation of `qml.probs`, because the model can adapt its measurement operator to the sample being classified.
+
+### Practical implications
+
+Benefits:
+
+- More expressive readout than a fixed linear head
+- Closer to the measurement-programming idea in the paper
+- Lets the model exploit phase information from the state, not only basis-state probabilities
+
+Costs:
+
+- Much larger classical readout parameterization
+- Heavier memory and compute use than `linear` or `probs_only`
+- More risk of overfitting on a small dataset
+
+Because the observable is a full `64 x 64` Hermitian matrix per class, this mode is substantially more expensive than the default readouts.
+
+### Recommended use
+
+Use `learnable_observable` when you want to study richer measurement design or compare static readouts against programmable measurements. For quick baselines or fast experiments, `linear` is still the simpler default.
+
+Example:
+
+```bash
+cd /Users/hoangquan/Workspaces/QuantumDistillation/code
+train-vqa-mnist --ansatz strongly_entangling --readout-mode learnable_observable --num-classes 4
+```
+
 ## Compare several VQAs
 
 ```bash
