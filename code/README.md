@@ -149,6 +149,32 @@ This uses PennyLane's built-in `StronglyEntanglingLayers` template.
 
 It is the richest ansatz in the project and serves as the most expressive default option. If you want a stronger baseline without hand-designing the entangling pattern yourself, this is usually the best starting point.
 
+More specifically, `StronglyEntanglingLayers` is a layered template that combines:
+
+- multiple trainable single-qubit rotations on every qubit in every layer
+- a built-in entangling pattern designed to spread correlations across the register
+- a denser parameterization than the simpler hand-written ansatzes in this project
+
+For this project:
+
+- the circuit uses 6 qubits
+- the layer count is controlled by `--layers`
+- the PennyLane template determines the exact internal rotation-and-entanglement structure
+
+Why this ansatz is useful here:
+
+- It gives a strong off-the-shelf expressive baseline.
+- It usually explores a richer part of Hilbert space than the simpler `basic` circuit.
+- It avoids hand-designing a custom entanglement schedule while still being more flexible than the nearest-neighbor `hardware_efficient` version.
+
+Tradeoffs:
+
+- It has more trainable freedom, which can help accuracy.
+- It can also be slower to train and potentially harder to optimize.
+- Because it is a generic template, it is less interpretable than the simpler hand-written ansatzes.
+
+In short, `strongly_entangling` is the “high-capacity default” in this repo: use it when you want the most expressive built-in circuit before moving on to more specialized architectures or measurement designs.
+
 ### Why the model measures probabilities instead of a few observables
 
 The quantum circuit returns the full probability vector over all 6-qubit basis states instead of only measuring one expectation value per class.
