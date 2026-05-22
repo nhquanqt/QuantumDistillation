@@ -143,6 +143,34 @@ Each layer applies:
 
 This is a more expressive layered circuit with 3 trainable parameters per qubit per layer. It is meant to be a stronger generic ansatz while still keeping a simple, hardware-friendly structure.
 
+More specifically, this ansatz is called “hardware efficient” because it uses:
+
+- only standard single-qubit rotation gates
+- only local nearest-neighbor entangling gates
+- a repeated layered structure that is easy to map onto many quantum devices
+
+For this project:
+
+- each qubit receives `RX`, `RY`, and `RZ` in every layer
+- the entanglement pattern is a linear chain of `CZ` gates
+- the number of trainable parameters per layer is `3 x num_qubits`
+
+With 6 qubits, that means each layer has 18 trainable rotation parameters before adding the next entangling chain.
+
+Why this ansatz is useful here:
+
+- It is richer than the `basic` ansatz because it gives each qubit a full three-angle rotation block.
+- It keeps the entangling pattern simple and local, which matches the kind of connectivity many real devices expose.
+- It is easier to reason about than `strongly_entangling`, while still being more expressive than the smallest baseline.
+
+Tradeoffs:
+
+- It is more expressive than `basic`, but still more structured and less aggressive than `strongly_entangling`.
+- Its nearest-neighbor entanglement may limit how quickly long-range correlations spread across qubits.
+- It can be a good middle ground when `basic` feels too weak and `strongly_entangling` feels too unconstrained or too expensive.
+
+In short, `hardware_efficient` is the “balanced middle option” in this repo: more flexible than `basic`, more structured than `strongly_entangling`, and a natural choice when you want a realistic layered circuit with local entanglement.
+
 #### `strongly_entangling`
 
 This uses PennyLane's built-in `StronglyEntanglingLayers` template.
