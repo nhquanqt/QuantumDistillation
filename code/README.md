@@ -173,7 +173,7 @@ In short, `hardware_efficient` is the “balanced middle option” in this repo:
 
 #### `strongly_entangling`
 
-This uses PennyLane's built-in `StronglyEntanglingLayers` template.
+This uses PennyLane's built-in `StronglyEntanglingLayers` template, which the PennyLane documentation describes as being inspired by the circuit-centric classifier design of Schuld, Bocharov, Svore, and Wiebe, [Circuit-centric quantum classifiers](https://arxiv.org/abs/1804.00633).
 
 It is the richest ansatz in the project and serves as the most expressive default option. If you want a stronger baseline without hand-designing the entangling pattern yourself, this is usually the best starting point.
 
