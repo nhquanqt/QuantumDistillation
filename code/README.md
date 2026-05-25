@@ -74,6 +74,8 @@ By default, the project trains, validates, and tests on the full dataset splits.
 
 Each training epoch prints its computing time and also stores it in the output JSON as `epoch_time_seconds`.
 
+Each run also prints the number of train, validation, and test samples, and stores those counts in `results.json` under `dataset_sizes`.
+
 Test evaluation is run with the best validation checkpoint rather than the final epoch checkpoint. The saved JSON includes `best_checkpoint` metadata, while the actual model weights are stored in the checkpoint files.
 
 Output filenames include the main experiment arguments such as ansatz, readout mode, number of classes, layers, epochs, batch size, learning rate, seed, and device choices.

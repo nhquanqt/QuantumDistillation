@@ -144,6 +144,11 @@ def train_model(config: TrainingConfig) -> dict:
     val_y = _as_torch_labels(splits.val_y).to(classical_device)
     test_x = _as_torch_features(splits.test_x)
     test_y = _as_torch_labels(splits.test_y).to(classical_device)
+    dataset_sizes = {
+        "train": int(len(train_x)),
+        "val": int(len(val_x)),
+        "test": int(len(test_x)),
+    }
 
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     loss_fn = torch.nn.CrossEntropyLoss()
@@ -159,8 +164,15 @@ def train_model(config: TrainingConfig) -> dict:
         f"quantum_device={config.quantum_device} classical_device={classical_device.type}"
         f" readout_mode={config.readout_mode} num_classes={config.num_classes}"
     )
+    split_header = (
+        f"samples_train={dataset_sizes['train']} "
+        f"samples_val={dataset_sizes['val']} "
+        f"samples_test={dataset_sizes['test']}"
+    )
     print(run_header)
+    print(split_header)
     log_lines.append(run_header)
+    log_lines.append(split_header)
 
     for epoch in range(1, config.epochs + 1):
         epoch_start_time = perf_counter()
@@ -241,6 +253,7 @@ def train_model(config: TrainingConfig) -> dict:
     return {
         "config": asdict(config),
         "model_spec": asdict(spec),
+        "dataset_sizes": dataset_sizes,
         "history": history,
         "best_checkpoint": {
             "epoch": best_epoch,
