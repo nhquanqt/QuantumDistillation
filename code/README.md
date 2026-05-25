@@ -9,6 +9,19 @@ The implementation uses:
 - `scikit-learn` for the 8x8 digits dataset and dataset splitting
 - `numpy` for dataset preprocessing
 
+## Outline
+
+- [Project layout](#project-layout)
+- [Setup](#setup)
+- [Train one VQA](#train-one-vqa)
+- [Run with CUDA](#run-with-cuda)
+- [Ansatz design](#ansatz-design)
+- [Readout design](#readout-design)
+- [Learnable observable details](#learnable-observable-details)
+- [Compare several VQAs](#compare-several-vqas)
+- [Compare different layer counts](#compare-different-layer-counts)
+- [Notes](#notes)
+
 ## Project layout
 
 ```text
