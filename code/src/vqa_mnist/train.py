@@ -73,6 +73,33 @@ def serialize_state_dict(module: torch.nn.Module | None) -> dict[str, list] | No
     }
 
 
+def _slugify_value(value: object) -> str:
+    text = str(value)
+    return text.replace(".", "p").replace("-", "m")
+
+
+def experiment_filename_suffix(config: TrainingConfig) -> str:
+    parts = [
+        f"ansatz-{config.ansatz}",
+        f"readout-{config.readout_mode}",
+        f"classes-{config.num_classes}",
+        f"layers-{config.layers}",
+        f"epochs-{config.epochs}",
+        f"batch-{config.batch_size}",
+        f"lr-{_slugify_value(config.learning_rate)}",
+        f"seed-{config.seed}",
+        f"qdev-{config.quantum_device}",
+        f"cdev-{config.device}",
+    ]
+    if config.train_limit is not None:
+        parts.append(f"trainlim-{config.train_limit}")
+    if config.val_limit is not None:
+        parts.append(f"vallim-{config.val_limit}")
+    if config.test_limit is not None:
+        parts.append(f"testlim-{config.test_limit}")
+    return "_".join(parts)
+
+
 def train_model(config: TrainingConfig) -> dict:
     torch.manual_seed(config.seed)
     classical_device = resolve_device(config.device)
@@ -192,7 +219,9 @@ def train_model(config: TrainingConfig) -> dict:
 def save_run(results: dict, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    path = output_dir / f"train_{results['config']['ansatz']}_{timestamp}.json"
+    config = TrainingConfig(**results["config"])
+    suffix = experiment_filename_suffix(config)
+    path = output_dir / f"train_{suffix}_{timestamp}.json"
     path.write_text(json.dumps(results, indent=2))
     return path
 

@@ -61,6 +61,8 @@ By default, the project trains, validates, and tests on the full dataset splits.
 
 Each training epoch prints its computing time and also stores it in the output JSON as `epoch_time_seconds`.
 
+Output filenames include the main experiment arguments such as ansatz, readout mode, number of classes, layers, epochs, batch size, learning rate, seed, and device choices.
+
 If you want to classify with `qml.probs` only and no trainable classical head:
 
 ```bash

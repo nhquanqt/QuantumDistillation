@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from model import SUPPORTED_ANSATZES
-from train import TrainingConfig, train_model
+from train import TrainingConfig, experiment_filename_suffix, train_model
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -86,7 +86,23 @@ def main() -> None:
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    summary_path = args.output_dir / f"compare_vqas_{timestamp}.json"
+    summary_config = TrainingConfig(
+        ansatz="all",
+        readout_mode=args.readout_mode,
+        num_classes=args.num_classes,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        layers=args.layers,
+        seed=args.seed,
+        train_limit=args.train_limit,
+        val_limit=args.val_limit,
+        test_limit=args.test_limit,
+        device=args.device,
+        quantum_device=args.quantum_device,
+    )
+    suffix = experiment_filename_suffix(summary_config)
+    summary_path = args.output_dir / f"compare_vqas_{suffix}_{timestamp}.json"
     summary_path.write_text(json.dumps(summaries, indent=2))
 
     for summary in summaries:
