@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -73,6 +74,23 @@ def serialize_state_dict(module: torch.nn.Module | None) -> dict[str, list] | No
     }
 
 
+def serialize_model_parameters(model: VQADigitsClassifier) -> dict[str, object]:
+    return {
+        "q_params": model.q_params.detach().cpu().numpy().tolist(),
+        "readout_weights": (
+            model.readout.weight.detach().cpu().numpy().tolist()
+            if model.readout is not None
+            else None
+        ),
+        "readout_bias": (
+            model.readout.bias.detach().cpu().numpy().tolist()
+            if model.readout is not None
+            else None
+        ),
+        "observable_programmer": serialize_state_dict(model.observable_programmer),
+    }
+
+
 def _slugify_value(value: object) -> str:
     text = str(value)
     return text.replace(".", "p").replace("-", "m")
@@ -133,6 +151,10 @@ def train_model(config: TrainingConfig) -> dict:
     loss_fn = torch.nn.CrossEntropyLoss()
     rng = np.random.default_rng(config.seed)
     history: list[dict[str, float]] = []
+    best_epoch = 0
+    best_state_dict = deepcopy(model.state_dict())
+    best_val_accuracy = float("-inf")
+    best_val_loss = float("inf")
 
     print(
         f"quantum_device={config.quantum_device} classical_device={classical_device.type}"
@@ -180,6 +202,17 @@ def train_model(config: TrainingConfig) -> dict:
             "val_accuracy": val_metrics["accuracy"],
         }
         history.append(epoch_metrics)
+        if (
+            epoch_metrics["val_accuracy"] > best_val_accuracy
+            or (
+                epoch_metrics["val_accuracy"] == best_val_accuracy
+                and epoch_metrics["val_loss"] < best_val_loss
+            )
+        ):
+            best_epoch = epoch
+            best_val_accuracy = epoch_metrics["val_accuracy"]
+            best_val_loss = epoch_metrics["val_loss"]
+            best_state_dict = deepcopy(model.state_dict())
         print(
             f"epoch={epoch:02d} "
             f"time={epoch_metrics['epoch_time_seconds']:.2f}s "
@@ -188,31 +221,28 @@ def train_model(config: TrainingConfig) -> dict:
             f"val_acc={epoch_metrics['val_accuracy']:.3f}"
         )
 
+    final_parameters = serialize_model_parameters(model)
+    model.load_state_dict(best_state_dict)
     test_metrics = evaluate_metrics(
         model,
         test_x,
         test_y,
         loss_fn,
     )
+    best_parameters = serialize_model_parameters(model)
     return {
         "config": asdict(config),
         "model_spec": asdict(spec),
         "history": history,
-        "test_metrics": test_metrics,
-        "final_parameters": {
-            "q_params": model.q_params.detach().cpu().numpy().tolist(),
-            "readout_weights": (
-                model.readout.weight.detach().cpu().numpy().tolist()
-                if model.readout is not None
-                else None
-            ),
-            "readout_bias": (
-                model.readout.bias.detach().cpu().numpy().tolist()
-                if model.readout is not None
-                else None
-            ),
-            "observable_programmer": serialize_state_dict(model.observable_programmer),
+        "best_checkpoint": {
+            "epoch": best_epoch,
+            "val_accuracy": best_val_accuracy,
+            "val_loss": best_val_loss,
         },
+        "test_metrics": test_metrics,
+        "test_model_epoch": best_epoch,
+        "best_parameters": best_parameters,
+        "final_parameters": final_parameters,
     }
 
 
@@ -287,6 +317,7 @@ def main() -> None:
     results = train_model(config)
     output_path = save_run(results, args.output_dir)
     print(
+        f"best_epoch={results['best_checkpoint']['epoch']} "
         f"test_loss={results['test_metrics']['loss']:.4f} "
         f"test_accuracy={results['test_metrics']['accuracy']:.3f}"
     )
