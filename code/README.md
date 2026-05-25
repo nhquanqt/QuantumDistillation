@@ -1,12 +1,12 @@
-# PennyLane VQAs on 8x8 MNIST-like Digits
+# PennyLane VQAs on 8x8 MNIST
 
-This project trains variational quantum classifiers on the `sklearn` handwritten digits dataset, which is the standard 8x8 MNIST-like benchmark.
+This project trains variational quantum classifiers on the `torchvision` MNIST dataset. The original 28x28 images are resized to 8x8 so they can be amplitude-embedded into 6 qubits.
 
 The implementation uses:
 
 - `PennyLane` for quantum circuits
 - `PyTorch` for the training loop, parameters, and optimizer
-- `scikit-learn` for the 8x8 digits dataset and dataset splitting
+- `torchvision` for the MNIST dataset
 - `numpy` for dataset preprocessing
 
 ## Outline

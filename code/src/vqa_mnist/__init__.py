@@ -1,4 +1,4 @@
-"""Training utilities for PennyLane VQAs on 8x8 handwritten digits."""
+"""Training utilities for PennyLane VQAs on 8x8 resized MNIST."""
 
 __all__ = [
     "dataset",
