@@ -61,9 +61,22 @@ By default, the project trains, validates, and tests on the full dataset splits.
 
 Each training epoch prints its computing time and also stores it in the output JSON as `epoch_time_seconds`.
 
-Test evaluation is run with the best validation checkpoint rather than the final epoch checkpoint. The saved JSON includes `best_checkpoint`, `best_parameters`, and `final_parameters`.
+Test evaluation is run with the best validation checkpoint rather than the final epoch checkpoint. The saved JSON includes `best_checkpoint` metadata, while the actual model weights are stored in the checkpoint files.
 
 Output filenames include the main experiment arguments such as ansatz, readout mode, number of classes, layers, epochs, batch size, learning rate, seed, and device choices.
+
+Each experiment is saved as its own folder. A training run folder includes:
+
+- `results.json`
+- `train.log`
+- `best_model.pt`
+- `final_model.pt`
+
+Comparison commands also create a parent experiment folder with:
+
+- a `summary_*.json` file
+- a `compare.log` file
+- a `runs/` directory containing one saved folder per individual run
 
 If you want to classify with `qml.probs` only and no trainable classical head:
 

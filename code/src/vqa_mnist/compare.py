@@ -6,7 +6,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from model import SUPPORTED_ANSATZES
-from train import TrainingConfig, experiment_filename_suffix, train_model
+from train import (
+    TrainingConfig,
+    experiment_filename_suffix,
+    experiment_folder_name,
+    save_run,
+    train_model,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -53,9 +59,35 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = build_parser().parse_args()
     summaries: list[dict] = []
+    comparison_log_lines: list[str] = []
 
-    for ansatz in SUPPORTED_ANSATZES:
-        print(f"running_ansatz={ansatz}")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    summary_config = TrainingConfig(
+        ansatz="all",
+        readout_mode=args.readout_mode,
+        num_classes=args.num_classes,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        layers=args.layers,
+        seed=args.seed,
+        train_limit=args.train_limit,
+        val_limit=args.val_limit,
+        test_limit=args.test_limit,
+        device=args.device,
+        quantum_device=args.quantum_device,
+    )
+    comparison_dir = args.output_dir / experiment_folder_name(
+        "compare_vqas",
+        summary_config,
+        timestamp,
+    )
+    runs_dir = comparison_dir / "runs"
+
+    for run_index, ansatz in enumerate(SUPPORTED_ANSATZES, start=1):
+        run_header = f"running_ansatz={ansatz}"
+        print(run_header)
+        comparison_log_lines.append(run_header)
         results = train_model(
             TrainingConfig(
                 ansatz=ansatz,
@@ -73,6 +105,11 @@ def main() -> None:
                 quantum_device=args.quantum_device,
             )
         )
+        save_run(
+            results,
+            runs_dir,
+            folder_name=f"run{run_index:02d}_{ansatz}",
+        )
         summaries.append(
             {
                 "ansatz": ansatz,
@@ -84,34 +121,22 @@ def main() -> None:
             }
         )
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    summary_config = TrainingConfig(
-        ansatz="all",
-        readout_mode=args.readout_mode,
-        num_classes=args.num_classes,
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        learning_rate=args.learning_rate,
-        layers=args.layers,
-        seed=args.seed,
-        train_limit=args.train_limit,
-        val_limit=args.val_limit,
-        test_limit=args.test_limit,
-        device=args.device,
-        quantum_device=args.quantum_device,
-    )
+    comparison_dir.mkdir(parents=True, exist_ok=True)
     suffix = experiment_filename_suffix(summary_config)
-    summary_path = args.output_dir / f"compare_vqas_{suffix}_{timestamp}.json"
+    summary_path = comparison_dir / f"summary_{suffix}.json"
     summary_path.write_text(json.dumps(summaries, indent=2))
 
     for summary in summaries:
-        print(
+        summary_log_line = (
             f"ansatz={summary['ansatz']} "
             f"test_acc={summary['test_accuracy']:.3f} "
             f"test_loss={summary['test_loss']:.4f}"
         )
-    print(f"saved_results={summary_path}")
+        print(summary_log_line)
+        comparison_log_lines.append(summary_log_line)
+
+    (comparison_dir / "compare.log").write_text("\n".join(comparison_log_lines) + "\n")
+    print(f"saved_results_dir={comparison_dir}")
 
 
 if __name__ == "__main__":

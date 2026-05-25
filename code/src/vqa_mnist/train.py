@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
+from typing import Any
 
 import numpy as np
 import torch
@@ -74,21 +75,8 @@ def serialize_state_dict(module: torch.nn.Module | None) -> dict[str, list] | No
     }
 
 
-def serialize_model_parameters(model: VQADigitsClassifier) -> dict[str, object]:
-    return {
-        "q_params": model.q_params.detach().cpu().numpy().tolist(),
-        "readout_weights": (
-            model.readout.weight.detach().cpu().numpy().tolist()
-            if model.readout is not None
-            else None
-        ),
-        "readout_bias": (
-            model.readout.bias.detach().cpu().numpy().tolist()
-            if model.readout is not None
-            else None
-        ),
-        "observable_programmer": serialize_state_dict(model.observable_programmer),
-    }
+def _cpu_state_dict(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    return {key: value.detach().cpu().clone() for key, value in state_dict.items()}
 
 
 def _slugify_value(value: object) -> str:
@@ -116,6 +104,16 @@ def experiment_filename_suffix(config: TrainingConfig) -> str:
     if config.test_limit is not None:
         parts.append(f"testlim-{config.test_limit}")
     return "_".join(parts)
+
+
+def experiment_folder_name(
+    prefix: str,
+    config: TrainingConfig,
+    timestamp: str | None = None,
+) -> str:
+    suffix = experiment_filename_suffix(config)
+    resolved_timestamp = timestamp or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"{prefix}_{suffix}_{resolved_timestamp}"
 
 
 def train_model(config: TrainingConfig) -> dict:
@@ -152,14 +150,17 @@ def train_model(config: TrainingConfig) -> dict:
     rng = np.random.default_rng(config.seed)
     history: list[dict[str, float]] = []
     best_epoch = 0
-    best_state_dict = deepcopy(model.state_dict())
+    best_state_dict = _cpu_state_dict(model.state_dict())
     best_val_accuracy = float("-inf")
     best_val_loss = float("inf")
+    log_lines: list[str] = []
 
-    print(
+    run_header = (
         f"quantum_device={config.quantum_device} classical_device={classical_device.type}"
         f" readout_mode={config.readout_mode} num_classes={config.num_classes}"
     )
+    print(run_header)
+    log_lines.append(run_header)
 
     for epoch in range(1, config.epochs + 1):
         epoch_start_time = perf_counter()
@@ -212,16 +213,18 @@ def train_model(config: TrainingConfig) -> dict:
             best_epoch = epoch
             best_val_accuracy = epoch_metrics["val_accuracy"]
             best_val_loss = epoch_metrics["val_loss"]
-            best_state_dict = deepcopy(model.state_dict())
-        print(
+            best_state_dict = _cpu_state_dict(model.state_dict())
+        epoch_log_line = (
             f"epoch={epoch:02d} "
             f"time={epoch_metrics['epoch_time_seconds']:.2f}s "
             f"batch_loss={epoch_metrics['batch_loss']:.4f} "
             f"train_acc={epoch_metrics['train_accuracy']:.3f} "
             f"val_acc={epoch_metrics['val_accuracy']:.3f}"
         )
+        print(epoch_log_line)
+        log_lines.append(epoch_log_line)
 
-    final_parameters = serialize_model_parameters(model)
+    final_state_dict = _cpu_state_dict(model.state_dict())
     model.load_state_dict(best_state_dict)
     test_metrics = evaluate_metrics(
         model,
@@ -229,7 +232,12 @@ def train_model(config: TrainingConfig) -> dict:
         test_y,
         loss_fn,
     )
-    best_parameters = serialize_model_parameters(model)
+    summary_log_line = (
+        f"best_epoch={best_epoch} "
+        f"test_loss={test_metrics['loss']:.4f} "
+        f"test_accuracy={test_metrics['accuracy']:.3f}"
+    )
+    log_lines.append(summary_log_line)
     return {
         "config": asdict(config),
         "model_spec": asdict(spec),
@@ -241,19 +249,51 @@ def train_model(config: TrainingConfig) -> dict:
         },
         "test_metrics": test_metrics,
         "test_model_epoch": best_epoch,
-        "best_parameters": best_parameters,
-        "final_parameters": final_parameters,
+        "_artifacts": {
+            "log_lines": log_lines,
+            "best_model_state_dict": best_state_dict,
+            "final_model_state_dict": final_state_dict,
+        },
     }
 
 
-def save_run(results: dict, output_dir: Path) -> Path:
+def save_run(
+    results: dict[str, Any],
+    output_dir: Path,
+    *,
+    prefix: str = "train",
+    folder_name: str | None = None,
+) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     config = TrainingConfig(**results["config"])
-    suffix = experiment_filename_suffix(config)
-    path = output_dir / f"train_{suffix}_{timestamp}.json"
-    path.write_text(json.dumps(results, indent=2))
-    return path
+    experiment_dir = output_dir / (
+        folder_name or experiment_folder_name(prefix, config, timestamp)
+    )
+    experiment_dir.mkdir(parents=True, exist_ok=True)
+
+    artifacts = results.get("_artifacts", {})
+    json_payload = {
+        key: value
+        for key, value in results.items()
+        if key != "_artifacts"
+    }
+
+    (experiment_dir / "results.json").write_text(json.dumps(json_payload, indent=2))
+
+    log_lines = artifacts.get("log_lines", [])
+    if log_lines:
+        (experiment_dir / "train.log").write_text("\n".join(log_lines) + "\n")
+
+    best_model_state_dict = artifacts.get("best_model_state_dict")
+    if best_model_state_dict is not None:
+        torch.save(best_model_state_dict, experiment_dir / "best_model.pt")
+
+    final_model_state_dict = artifacts.get("final_model_state_dict")
+    if final_model_state_dict is not None:
+        torch.save(final_model_state_dict, experiment_dir / "final_model.pt")
+
+    return experiment_dir
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -321,7 +361,7 @@ def main() -> None:
         f"test_loss={results['test_metrics']['loss']:.4f} "
         f"test_accuracy={results['test_metrics']['accuracy']:.3f}"
     )
-    print(f"saved_results={output_path}")
+    print(f"saved_results_dir={output_path}")
 
 
 if __name__ == "__main__":
