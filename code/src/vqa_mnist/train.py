@@ -46,6 +46,10 @@ def _as_torch_labels(array: np.ndarray) -> torch.Tensor:
     return torch.tensor(np.argmax(array, axis=1), dtype=torch.long)
 
 
+def _num_steps(num_samples: int, batch_size: int) -> int:
+    return max(1, (num_samples + batch_size - 1) // batch_size)
+
+
 def resolve_device(device_name: str) -> torch.device:
     if device_name == "auto":
         if torch.cuda.is_available():
@@ -116,6 +120,48 @@ def experiment_folder_name(
     return f"{prefix}_{suffix}_{resolved_timestamp}"
 
 
+def evaluate_metrics_batched(
+    model: VQADigitsClassifier,
+    features: torch.Tensor,
+    labels: torch.Tensor,
+    loss_fn: torch.nn.Module,
+    *,
+    batch_size: int,
+    phase: str,
+    epoch: int,
+    log_lines: list[str] | None = None,
+) -> dict[str, float]:
+    model.eval()
+    num_samples = len(features)
+    num_steps = _num_steps(num_samples, batch_size)
+    total_loss = 0.0
+    total_correct = 0
+
+    with torch.no_grad():
+        for step_index, start in enumerate(range(0, num_samples, batch_size), start=1):
+            end = start + batch_size
+            batch_x = features[start:end]
+            batch_y = labels[start:end]
+            logits = model(batch_x)
+            loss = loss_fn(logits, batch_y)
+            batch_count = len(batch_x)
+            total_loss += float(loss.item()) * batch_count
+            total_correct += int((logits.argmax(dim=1) == batch_y).sum().item())
+
+            step_log_line = (
+                f"epoch={epoch:02d} {phase}_step={step_index}/{num_steps} "
+                f"batch_size={batch_count}"
+            )
+            print(step_log_line)
+            if log_lines is not None:
+                log_lines.append(step_log_line)
+
+    return {
+        "loss": total_loss / num_samples,
+        "accuracy": total_correct / num_samples,
+    }
+
+
 def train_model(config: TrainingConfig) -> dict:
     torch.manual_seed(config.seed)
     classical_device = resolve_device(config.device)
@@ -149,6 +195,11 @@ def train_model(config: TrainingConfig) -> dict:
         "val": int(len(val_x)),
         "test": int(len(test_x)),
     }
+    step_counts = {
+        "train": _num_steps(dataset_sizes["train"], config.batch_size),
+        "val": _num_steps(dataset_sizes["val"], config.batch_size),
+        "test": _num_steps(dataset_sizes["test"], config.batch_size),
+    }
 
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     loss_fn = torch.nn.CrossEntropyLoss()
@@ -169,10 +220,17 @@ def train_model(config: TrainingConfig) -> dict:
         f"samples_val={dataset_sizes['val']} "
         f"samples_test={dataset_sizes['test']}"
     )
+    steps_header = (
+        f"steps_train={step_counts['train']} "
+        f"steps_val={step_counts['val']} "
+        f"steps_test={step_counts['test']}"
+    )
     print(run_header)
     print(split_header)
+    print(steps_header)
     log_lines.append(run_header)
     log_lines.append(split_header)
+    log_lines.append(steps_header)
 
     for epoch in range(1, config.epochs + 1):
         epoch_start_time = perf_counter()
@@ -181,7 +239,10 @@ def train_model(config: TrainingConfig) -> dict:
         shuffled_y = train_y[permutation]
 
         batch_losses: list[float] = []
-        for start in range(0, len(shuffled_x), config.batch_size):
+        for step_index, start in enumerate(
+            range(0, len(shuffled_x), config.batch_size),
+            start=1,
+        ):
             end = start + config.batch_size
             batch_x = shuffled_x[start:end]
             batch_y = shuffled_y[start:end]
@@ -191,18 +252,32 @@ def train_model(config: TrainingConfig) -> dict:
             loss.backward()
             optimizer.step()
             batch_losses.append(float(loss.item()))
+            train_step_log_line = (
+                f"epoch={epoch:02d} train_step={step_index}/{step_counts['train']} "
+                f"loss={loss.item():.4f}"
+            )
+            print(train_step_log_line)
+            log_lines.append(train_step_log_line)
 
-        train_metrics = evaluate_metrics(
+        train_metrics = evaluate_metrics_batched(
             model,
             train_x,
             train_y,
             loss_fn,
+            batch_size=config.batch_size,
+            phase="validate_train",
+            epoch=epoch,
+            log_lines=log_lines,
         )
-        val_metrics = evaluate_metrics(
+        val_metrics = evaluate_metrics_batched(
             model,
             val_x,
             val_y,
             loss_fn,
+            batch_size=config.batch_size,
+            phase="validate_val",
+            epoch=epoch,
+            log_lines=log_lines,
         )
         epoch_time_seconds = float(perf_counter() - epoch_start_time)
         epoch_metrics = {
@@ -254,6 +329,7 @@ def train_model(config: TrainingConfig) -> dict:
         "config": asdict(config),
         "model_spec": asdict(spec),
         "dataset_sizes": dataset_sizes,
+        "step_counts": step_counts,
         "history": history,
         "best_checkpoint": {
             "epoch": best_epoch,

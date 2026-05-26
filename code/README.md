@@ -76,6 +76,8 @@ Each training epoch prints its computing time and also stores it in the output J
 
 Each run also prints the number of train, validation, and test samples, and stores those counts in `results.json` under `dataset_sizes`.
 
+The training loop also prints explicit `train_step` and validation step progress for each epoch, and stores the total step counts in `results.json` under `step_counts`.
+
 Test evaluation is run with the best validation checkpoint rather than the final epoch checkpoint. The saved JSON includes `best_checkpoint` metadata, while the actual model weights are stored in the checkpoint files.
 
 Output filenames include the main experiment arguments such as ansatz, readout mode, number of classes, layers, epochs, batch size, learning rate, seed, and device choices.
