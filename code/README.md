@@ -16,6 +16,7 @@ The implementation uses:
 - [Train one VQA](#train-one-vqa)
 - [Run with CUDA](#run-with-cuda)
 - [Ansatz design](#ansatz-design)
+- [Experiment types](#experiment-types)
 - [Readout design](#readout-design)
 - [Learnable observable details](#learnable-observable-details)
 - [Compare several VQAs](#compare-several-vqas)
@@ -58,7 +59,7 @@ train-vqa-mnist --ansatz strongly_entangling --epochs 12
 
 Useful options:
 
-- `--ansatz`: `basic`, `hardware_efficient`, or `strongly_entangling`
+- `--ansatz`: `basic`, `hardware_efficient`, `qcnn`, or `strongly_entangling`
 - `--readout-mode`: `linear`, `probs_only`, or `learnable_observable`
 - `--num-classes`: `10` or `4`
 - `--epochs`: training epochs
@@ -205,6 +206,42 @@ Tradeoffs:
 
 In short, `hardware_efficient` is the “balanced middle option” in this repo: more flexible than `basic`, more structured than `strongly_entangling`, and a natural choice when you want a realistic layered circuit with local entanglement.
 
+#### `qcnn`
+
+This option uses a QCNN-inspired multiscale circuit, following the general architectural idea introduced by Cong, Choi, and Lukin in [Quantum convolutional neural networks](https://arxiv.org/abs/1810.03787). Instead of applying the same entangling pattern everywhere, it processes the 6-qubit register through local two-qubit blocks arranged from fine to coarse scales.
+
+For each layer in this project, the block pattern is:
+
+- local pair blocks on `(0,1)`, `(2,3)`, and `(4,5)`
+- wider pair blocks on `(1,2)` and `(3,4)`
+- one coarse block on `(2,3)`
+
+Each two-qubit block includes:
+
+- single-qubit `RY` and `RZ` rotations on both qubits
+- a short entangling sequence built from `CNOT`
+- a final pair of trainable rotations after entanglement
+
+This gives the ansatz a convolution-like inductive bias:
+
+- early blocks focus on short-range local structure
+- later blocks mix information across wider receptive fields
+- repeating `--layers` stacks this hierarchy multiple times
+
+Why this ansatz is useful here:
+
+- It is more structured than a generic hardware-efficient circuit.
+- It introduces a hierarchical locality bias that fits image-like data.
+- It gives a more “architectural” baseline between simple layered circuits and fully generic expressive templates.
+
+Tradeoffs:
+
+- It has more structure than `strongly_entangling`, which can make it easier to interpret.
+- It is less general-purpose than a dense template because its entanglement schedule is intentionally constrained.
+- In this implementation it is QCNN-inspired rather than a full qubit-dropping pooling network, since the model still keeps all 6 qubits available for the project’s shared readout pipeline.
+
+In short, `qcnn` is the “multiscale local-structure option” in this repo: use it when you want a circuit with an image-inspired hierarchy rather than a uniform layer pattern everywhere.
+
 #### `strongly_entangling`
 
 This uses PennyLane's built-in `StronglyEntanglingLayers` template, which the PennyLane documentation describes as being inspired by the circuit-centric classifier design of Schuld, Bocharov, Svore, and Wiebe, [Circuit-centric quantum classifiers](https://arxiv.org/abs/1804.00633).
@@ -244,6 +281,46 @@ The quantum circuit returns the full probability vector over all 6-qubit basis s
 That means the ansatz is being used mainly as a quantum feature transformer. The final class decision is made by the PyTorch readout head, which maps the 64 quantum probabilities to 10 digit classes.
 
 This design makes it easy to compare different ansatz families under the same encoding and readout setup.
+
+## Experiment types
+
+In this repo, the experiment category is determined by the readout, not by the ansatz.
+
+All three ansatz options:
+
+- `basic`
+- `hardware_efficient`
+- `qcnn`
+- `strongly_entangling`
+
+can be used in either a `quantum` or `hybrid` experiment depending on `--readout-mode`.
+
+Classify the settings as follows:
+
+- `--readout-mode probs_only`: `quantum`
+- `--readout-mode linear`: `hybrid`
+- `--readout-mode learnable_observable`: `hybrid`
+
+Reasoning:
+
+- `probs_only` uses the quantum circuit output directly and only applies a fixed grouping rule from basis-state probabilities to class probabilities. There is no trainable classical head after the quantum model.
+- `linear` is hybrid because the quantum circuit produces features and a trainable PyTorch linear layer performs the final class mapping.
+- `learnable_observable` is also hybrid in this implementation because a classical neural controller generates the observable parameters used for the final measurement.
+
+So a few common examples are:
+
+- `basic + probs_only`: `quantum`
+- `hardware_efficient + probs_only`: `quantum`
+- `qcnn + probs_only`: `quantum`
+- `strongly_entangling + probs_only`: `quantum`
+- `basic + linear`: `hybrid`
+- `hardware_efficient + linear`: `hybrid`
+- `qcnn + linear`: `hybrid`
+- `strongly_entangling + linear`: `hybrid`
+- `basic + learnable_observable`: `hybrid`
+- `hardware_efficient + learnable_observable`: `hybrid`
+- `qcnn + learnable_observable`: `hybrid`
+- `strongly_entangling + learnable_observable`: `hybrid`
 
 ## Readout design
 

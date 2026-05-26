@@ -9,6 +9,7 @@ import torch
 SUPPORTED_ANSATZES = (
     "basic",
     "hardware_efficient",
+    "qcnn",
     "strongly_entangling",
 )
 
@@ -39,11 +40,41 @@ def parameter_shape(spec: ModelSpec) -> tuple[int, ...]:
         return (spec.num_layers, spec.num_qubits, 2)
     if spec.ansatz == "hardware_efficient":
         return (spec.num_layers, spec.num_qubits, 3)
+    if spec.ansatz == "qcnn":
+        return (spec.num_layers, 6, 6)
     raise ValueError(f"Unsupported ansatz: {spec.ansatz}")
 
 
 def hermitian_parameter_count(matrix_dim: int) -> int:
     return matrix_dim * matrix_dim
+
+
+def qcnn_block(params: torch.Tensor, wires: tuple[int, int]) -> None:
+    left_wire, right_wire = wires
+    qml.RY(params[0], wires=left_wire)
+    qml.RZ(params[1], wires=left_wire)
+    qml.RY(params[2], wires=right_wire)
+    qml.RZ(params[3], wires=right_wire)
+    qml.CNOT(wires=[left_wire, right_wire])
+    qml.RY(params[4], wires=right_wire)
+    qml.CNOT(wires=[right_wire, left_wire])
+    qml.RZ(params[5], wires=left_wire)
+
+
+def apply_qcnn_ansatz(params: torch.Tensor, num_layers: int) -> None:
+    # A QCNN-inspired hierarchy: three local pair blocks, then two wider blocks,
+    # then one coarse block. Repeating the stack increases circuit depth.
+    pair_hierarchy = (
+        (0, 1),
+        (2, 3),
+        (4, 5),
+        (1, 2),
+        (3, 4),
+        (2, 3),
+    )
+    for layer in range(num_layers):
+        for block_index, wires in enumerate(pair_hierarchy):
+            qcnn_block(params[layer, block_index], wires)
 
 
 def build_qnode(spec: ModelSpec, quantum_device: str = "cpu"):
@@ -80,6 +111,8 @@ def build_qnode(spec: ModelSpec, quantum_device: str = "cpu"):
                     qml.RZ(params[layer, wire, 2], wires=wire)
                 for wire in range(spec.num_qubits - 1):
                     qml.CZ(wires=[wire, wire + 1])
+        elif spec.ansatz == "qcnn":
+            apply_qcnn_ansatz(params, spec.num_layers)
         else:
             raise ValueError(f"Unsupported ansatz: {spec.ansatz}")
 
