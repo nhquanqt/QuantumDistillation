@@ -145,12 +145,17 @@ def evaluate_metrics_batched(
             logits = model(batch_x)
             loss = loss_fn(logits, batch_y)
             batch_count = len(batch_x)
+            batch_accuracy = float(
+                (logits.argmax(dim=1) == batch_y).double().mean().item()
+            )
             total_loss += float(loss.item()) * batch_count
             total_correct += int((logits.argmax(dim=1) == batch_y).sum().item())
 
             step_log_line = (
                 f"epoch={epoch:02d} {phase}_step={step_index}/{num_steps} "
-                f"batch_size={batch_count}"
+                f"batch_size={batch_count} "
+                f"loss={loss.item():.4f} "
+                f"acc={batch_accuracy:.3f}"
             )
             print(step_log_line)
             if log_lines is not None:
@@ -252,9 +257,13 @@ def train_model(config: TrainingConfig) -> dict:
             loss.backward()
             optimizer.step()
             batch_losses.append(float(loss.item()))
+            batch_accuracy = float(
+                (logits.argmax(dim=1) == batch_y).double().mean().item()
+            )
             train_step_log_line = (
                 f"epoch={epoch:02d} train_step={step_index}/{step_counts['train']} "
-                f"loss={loss.item():.4f}"
+                f"loss={loss.item():.4f} "
+                f"acc={batch_accuracy:.3f}"
             )
             print(train_step_log_line)
             log_lines.append(train_step_log_line)
