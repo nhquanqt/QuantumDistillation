@@ -259,6 +259,9 @@ def train_model(config: TrainingConfig) -> dict:
         shuffled_y = train_y[permutation]
 
         batch_losses: list[float] = []
+        train_loss_total = 0.0
+        train_correct_total = 0
+        train_sample_total = 0
         for step_index, start in enumerate(
             range(0, len(shuffled_x), config.batch_size),
             start=1,
@@ -272,9 +275,13 @@ def train_model(config: TrainingConfig) -> dict:
             loss.backward()
             optimizer.step()
             batch_losses.append(float(loss.item()))
+            batch_count = len(batch_x)
             batch_accuracy = float(
                 (logits.argmax(dim=1) == batch_y).double().mean().item()
             )
+            train_loss_total += float(loss.item()) * batch_count
+            train_correct_total += int((logits.argmax(dim=1) == batch_y).sum().item())
+            train_sample_total += batch_count
             elapsed_seconds = perf_counter() - epoch_start_time
             average_step_time = elapsed_seconds / step_index
             remaining_steps = step_counts["train"] - step_index
@@ -288,16 +295,10 @@ def train_model(config: TrainingConfig) -> dict:
             print(train_step_log_line)
             log_lines.append(train_step_log_line)
 
-        train_metrics = evaluate_metrics_batched(
-            model,
-            train_x,
-            train_y,
-            loss_fn,
-            batch_size=config.batch_size,
-            phase="validate_train",
-            epoch=epoch,
-            log_lines=log_lines,
-        )
+        train_metrics = {
+            "loss": train_loss_total / train_sample_total,
+            "accuracy": train_correct_total / train_sample_total,
+        }
         val_metrics = evaluate_metrics_batched(
             model,
             val_x,
