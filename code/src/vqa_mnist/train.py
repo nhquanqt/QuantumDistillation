@@ -50,6 +50,15 @@ def _num_steps(num_samples: int, batch_size: int) -> int:
     return max(1, (num_samples + batch_size - 1) // batch_size)
 
 
+def _format_eta(seconds: float) -> str:
+    remaining = max(0, int(round(seconds)))
+    minutes, secs = divmod(remaining, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours > 0:
+        return f"{hours:d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+
 def resolve_device(device_name: str) -> torch.device:
     if device_name == "auto":
         if torch.cuda.is_available():
@@ -136,6 +145,7 @@ def evaluate_metrics_batched(
     num_steps = _num_steps(num_samples, batch_size)
     total_loss = 0.0
     total_correct = 0
+    phase_start_time = perf_counter()
 
     with torch.no_grad():
         for step_index, start in enumerate(range(0, num_samples, batch_size), start=1):
@@ -150,12 +160,17 @@ def evaluate_metrics_batched(
             )
             total_loss += float(loss.item()) * batch_count
             total_correct += int((logits.argmax(dim=1) == batch_y).sum().item())
+            elapsed_seconds = perf_counter() - phase_start_time
+            average_step_time = elapsed_seconds / step_index
+            remaining_steps = num_steps - step_index
+            eta_seconds = average_step_time * remaining_steps
 
             step_log_line = (
                 f"epoch={epoch:02d} {phase}_step={step_index}/{num_steps} "
                 f"batch_size={batch_count} "
                 f"loss={loss.item():.4f} "
-                f"acc={batch_accuracy:.3f}"
+                f"acc={batch_accuracy:.3f} "
+                f"eta={_format_eta(eta_seconds)}"
             )
             print(step_log_line)
             if log_lines is not None:
@@ -260,10 +275,15 @@ def train_model(config: TrainingConfig) -> dict:
             batch_accuracy = float(
                 (logits.argmax(dim=1) == batch_y).double().mean().item()
             )
+            elapsed_seconds = perf_counter() - epoch_start_time
+            average_step_time = elapsed_seconds / step_index
+            remaining_steps = step_counts["train"] - step_index
+            eta_seconds = average_step_time * remaining_steps
             train_step_log_line = (
                 f"epoch={epoch:02d} train_step={step_index}/{step_counts['train']} "
                 f"loss={loss.item():.4f} "
-                f"acc={batch_accuracy:.3f}"
+                f"acc={batch_accuracy:.3f} "
+                f"eta={_format_eta(eta_seconds)}"
             )
             print(train_step_log_line)
             log_lines.append(train_step_log_line)
