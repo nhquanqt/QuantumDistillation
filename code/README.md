@@ -59,7 +59,7 @@ train-vqa-mnist --ansatz strongly_entangling --epochs 12
 
 Useful options:
 
-- `--ansatz`: `basic`, `hardware_efficient`, `qcnn`, or `strongly_entangling`
+- `--ansatz`: `classical`, `basic`, `hardware_efficient`, `qcnn`, or `strongly_entangling`
 - `--readout-mode`: `linear`, `probs_only`, or `learnable_observable`
 - `--num-classes`: `10` or `4`
 - `--epochs`: training epochs
@@ -72,6 +72,8 @@ Useful options:
 - `--quantum-device`: `cpu` or `cuda`
 
 By default, the project trains, validates, and tests on the full dataset splits.
+
+When `--ansatz classical` is used, the run becomes a fully classical baseline on the same 64-dimensional resized MNIST features. In that case, `--readout-mode` and `--quantum-device` are not used for the model itself.
 
 Each training epoch prints its computing time and also stores it in the output JSON as `epoch_time_seconds`.
 
@@ -148,7 +150,7 @@ Device meaning:
 
 ## Ansatz design
 
-This project uses a hybrid quantum classifier with the following structure:
+For the quantum ansatzes, the project uses the following shared structure:
 
 1. Flatten each 8x8 image into a 64-dimensional vector.
 2. Normalize the vector and amplitude-embed it into a 6-qubit quantum state.
@@ -159,6 +161,25 @@ This project uses a hybrid quantum classifier with the following structure:
 The key design choice is that `2^6 = 64`, so 6 qubits are enough to represent the full 8x8 image after flattening.
 
 ### Supported ansatzes
+
+#### `classical`
+
+This option is a purely classical baseline. It skips amplitude embedding and the quantum circuit entirely, and instead applies a small multilayer perceptron directly to the flattened 64-dimensional 8x8 image vector.
+
+For this project:
+
+- the input is the same 64-dimensional resized MNIST feature vector used by the quantum models
+- each hidden layer uses 128 units with `SiLU`
+- the depth is controlled by `--layers`
+- the final linear layer maps to either 10 or 4 output classes
+
+Why this ansatz is useful here:
+
+- It gives a same-input classical reference point for the quantum and hybrid models.
+- It makes it easier to tell whether gains come from the quantum circuit or just from overall model capacity.
+- It fits naturally into the same training, validation, testing, and artifact-saving pipeline.
+
+In short, `classical` is the non-quantum baseline in this repo: use it when you want a direct classical comparison on the same resized MNIST inputs.
 
 #### `basic`
 
@@ -284,31 +305,25 @@ This design makes it easy to compare different ansatz families under the same en
 
 ## Experiment types
 
-In this repo, the experiment category is determined by the readout, not by the ansatz.
-
-All three ansatz options:
-
-- `basic`
-- `hardware_efficient`
-- `qcnn`
-- `strongly_entangling`
-
-can be used in either a `quantum` or `hybrid` experiment depending on `--readout-mode`.
+In this repo, the experiment category is determined by both the ansatz and the readout.
 
 Classify the settings as follows:
 
-- `--readout-mode probs_only`: `quantum`
-- `--readout-mode linear`: `hybrid`
-- `--readout-mode learnable_observable`: `hybrid`
+- `--ansatz classical`: `classical`
+- quantum ansatz + `--readout-mode probs_only`: `quantum`
+- quantum ansatz + `--readout-mode linear`: `hybrid`
+- quantum ansatz + `--readout-mode learnable_observable`: `hybrid`
 
 Reasoning:
 
+- `classical` does not construct or run a quantum circuit at all. It is a standard neural network baseline on the resized 8x8 MNIST features.
 - `probs_only` uses the quantum circuit output directly and only applies a fixed grouping rule from basis-state probabilities to class probabilities. There is no trainable classical head after the quantum model.
 - `linear` is hybrid because the quantum circuit produces features and a trainable PyTorch linear layer performs the final class mapping.
 - `learnable_observable` is also hybrid in this implementation because a classical neural controller generates the observable parameters used for the final measurement.
 
 So a few common examples are:
 
+- `classical`: `classical`
 - `basic + probs_only`: `quantum`
 - `hardware_efficient + probs_only`: `quantum`
 - `qcnn + probs_only`: `quantum`
@@ -348,6 +363,8 @@ This design keeps the quantum circuit focused on feature transformation while th
 An alternative is `--readout-mode probs_only`, which removes the trainable classical head and uses only `qml.probs` to produce class probabilities. In that mode, the basis-state probabilities are grouped into either 10 or 4 class probabilities depending on `--num-classes`.
 
 Another alternative is `--readout-mode learnable_observable`, where a neural controller programs Hermitian observables dynamically and the readout uses expectation values instead of a linear head.
+
+When `--ansatz classical` is selected, this readout section does not apply because the model predicts classes directly with a classical MLP.
 
 ## Learnable observable details
 
@@ -461,7 +478,7 @@ cd /Users/hoangquan/Workspaces/QuantumDistillation/code
 compare-vqa-mnist --epochs 8
 ```
 
-This runs all supported ansatzes and writes a summary JSON file under `code/outputs/`.
+This runs all supported settings, including the `classical` baseline, and writes a summary JSON file under `code/outputs/`.
 
 ## Compare different layer counts
 

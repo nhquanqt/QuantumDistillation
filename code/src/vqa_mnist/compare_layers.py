@@ -124,6 +124,7 @@ def main() -> None:
         summaries.append(
             {
                 "ansatz": args.ansatz,
+                "experiment_type": results["experiment_type"],
                 "readout_mode": args.readout_mode,
                 "num_classes": args.num_classes,
                 "layers": layer_count,

@@ -16,6 +16,7 @@ from dataset import load_mnist8x8_splits
 from model import (
     ModelSpec,
     SUPPORTED_ANSATZES,
+    experiment_type,
     evaluate_metrics,
     VQADigitsClassifier,
 )
@@ -220,6 +221,7 @@ def train_model(config: TrainingConfig) -> dict:
         "val": _num_steps(dataset_sizes["val"], config.batch_size),
         "test": _num_steps(dataset_sizes["test"], config.batch_size),
     }
+    run_experiment_type = experiment_type(config.ansatz, config.readout_mode)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     loss_fn = torch.nn.CrossEntropyLoss()
@@ -232,6 +234,7 @@ def train_model(config: TrainingConfig) -> dict:
     log_lines: list[str] = []
 
     run_header = (
+        f"experiment_type={run_experiment_type} "
         f"quantum_device={config.quantum_device} classical_device={classical_device.type}"
         f" readout_mode={config.readout_mode} num_classes={config.num_classes}"
     )
@@ -357,6 +360,7 @@ def train_model(config: TrainingConfig) -> dict:
     log_lines.append(summary_log_line)
     return {
         "config": asdict(config),
+        "experiment_type": run_experiment_type,
         "model_spec": asdict(spec),
         "dataset_sizes": dataset_sizes,
         "step_counts": step_counts,

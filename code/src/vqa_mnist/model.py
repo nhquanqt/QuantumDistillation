@@ -8,6 +8,7 @@ import torch
 
 SUPPORTED_ANSATZES = (
     "basic",
+    "classical",
     "hardware_efficient",
     "qcnn",
     "strongly_entangling",
@@ -20,6 +21,16 @@ class ModelSpec:
     num_qubits: int = 6
     num_layers: int = 2
     num_classes: int = 10
+
+
+def experiment_type(ansatz: str, readout_mode: str) -> str:
+    if ansatz == "classical":
+        return "classical"
+    if readout_mode == "probs_only":
+        return "quantum"
+    if readout_mode in ("linear", "learnable_observable"):
+        return "hybrid"
+    raise ValueError(f"Unsupported readout_mode: {readout_mode}")
 
 
 def resolve_quantum_device_name(quantum_device: str) -> str:
@@ -47,6 +58,30 @@ def parameter_shape(spec: ModelSpec) -> tuple[int, ...]:
 
 def hermitian_parameter_count(matrix_dim: int) -> int:
     return matrix_dim * matrix_dim
+
+
+class ClassicalDigitsClassifier(torch.nn.Module):
+    def __init__(
+        self,
+        input_dim: int,
+        num_classes: int,
+        num_layers: int,
+    ) -> None:
+        super().__init__()
+        hidden_dim = 128
+        layers: list[torch.nn.Module] = []
+        in_dim = input_dim
+
+        for _ in range(max(1, num_layers)):
+            layers.append(torch.nn.Linear(in_dim, hidden_dim, dtype=torch.float64))
+            layers.append(torch.nn.SiLU())
+            in_dim = hidden_dim
+
+        layers.append(torch.nn.Linear(hidden_dim, num_classes, dtype=torch.float64))
+        self.network = torch.nn.Sequential(*layers)
+
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        return self.network(features)
 
 
 def qcnn_block(params: torch.Tensor, wires: tuple[int, int]) -> None:
@@ -161,15 +196,28 @@ class VQADigitsClassifier(torch.nn.Module):
         super().__init__()
         self.spec = spec
         self.quantum_device = quantum_device
-        self.qnode = build_qnode(spec, quantum_device=quantum_device)
         self.classical_device = classical_device or torch.device("cpu")
         self.readout_mode = readout_mode
+        self.classical_backbone: torch.nn.Module | None = None
+        self.qnode = None
 
         generator = torch.Generator()
         generator.manual_seed(seed)
 
         init_scale = 0.01
         state_dim = 2**spec.num_qubits
+        self.q_params: torch.nn.Parameter | None = None
+        if self.spec.ansatz == "classical":
+            self.classical_backbone = ClassicalDigitsClassifier(
+                input_dim=state_dim,
+                num_classes=spec.num_classes,
+                num_layers=spec.num_layers,
+            ).to(self.classical_device)
+            self.readout = None
+            self.observable_programmer = None
+            return
+
+        self.qnode = build_qnode(spec, quantum_device=quantum_device)
         self.q_params = torch.nn.Parameter(
             init_scale
             * torch.randn(parameter_shape(spec), generator=generator, dtype=torch.float64)
@@ -266,6 +314,9 @@ class VQADigitsClassifier(torch.nn.Module):
         return torch.einsum("i,cij,j->c", torch.conj(state), observables, state).real
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
+        if self.classical_backbone is not None:
+            return self.classical_backbone(features.to(self.classical_device))
+
         if features.ndim == 1:
             state = self.qnode(features.to("cpu"), self.q_params)
             if self.readout_mode == "learnable_observable":
